@@ -2,16 +2,9 @@ import os.path
 import sys
 
 from dotenv import load_dotenv
-import re
 import json
-import numpy as np
-import polars as pl
-import pandas as pd
-import networkx as nx
-from tabulate import tabulate
 from argparse import ArgumentParser
-from io import StringIO
-from cosql import CoSQL
+from dataset_loader.spider import Spider
 
 
 
@@ -86,11 +79,13 @@ with open(OTHER) as other, open(SPIDER) as spider, open(SPARC) as sparc,\
 
 #print(spider_train)
 
-test = CoSQL()
+test = Spider()
 file = open("items.txt", 'w')
-ouput = test._generate_examples(DATASETS_PATH+"cosql_dataset/sql_state_tracking/cosql_train.json", DATASETS_PATH+"cosql_dataset/database")
+ouput = test._generate_examples(DATASETS_PATH+"spider/train_spider.json", DATASETS_PATH+"spider/database")
 
 with open("items.txt", "w") as fp:
     fp.write('\n'.join("{} {}".format(x[0], x[1]) for x in ouput))
 fp.close()
+
+
 sys.exit()

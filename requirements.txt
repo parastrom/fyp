@@ -1,0 +1,7 @@
+numpy~=1.23.5
+polars~=0.16.9
+pandas~=1.5.2
+networkx~=2.8.4
+python-dotenv~=1.0.0
+tabulate~=0.8.10
+datasets~=2.6.1

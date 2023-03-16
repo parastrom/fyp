@@ -6,6 +6,29 @@ from third_party.spider.get_tables import dump_db_json_schema
 
 # TODO Add licensing and citations
 
+_CITATION = """
+@InProceedings{Yu&al.19,
+  title     = {SParC: Cross-Domain Semantic Parsing in Context},
+  author    = {Tao Yu and Rui Zhang and Michihiro Yasunaga and Yi Chern Tan and Xi Victoria Lin and Suyi Li and Heyang Er, Irene Li and Bo Pang and Tao Chen and Emily Ji and Shreya Dixit and David Proctor and Sungrok Shim and Jonathan Kraft, Vincent Zhang and Caiming Xiong and Richard Socher and Dragomir Radev},
+  booktitle = {Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
+  year      = {2019},
+  address   = {Florence, Italy},
+  publisher = {Association for Computational Linguistics}
+}
+@inproceedings{Yu&al.18c,
+  title     = {Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Semantic Parsing and Text-to-SQL Task},
+  author    = {Tao Yu and Rui Zhang and Kai Yang and Michihiro Yasunaga and Dongxu Wang and Zifan Li and James Ma and Irene Li and Qingning Yao and Shanelle Roman and Zilin Zhang and Dragomir Radev}
+  booktitle = "Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing",
+  address   = "Brussels, Belgium",
+  publisher = "Association for Computational Linguistics",
+  year      = 2018
+}
+"""
+
+_HOMEPAGE = "https://yale-lily.github.io/sparc"
+_LICENSE = "CC BY-SA 4.0"
+_URL = "https://drive.google.com/uc?export=download&confirm=9iBg&id=13Abvu5SUMSP3SJM-ZIj66mOkeyAquR73"
+
 class SParC(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
 
@@ -53,25 +76,30 @@ class SParC(datasets.GeneratorBasedBuilder):
             SParC consists of 4,298 coherent question sequences (12k+ unique individual questions annotated with SQL queries annotated by 14 Yale students),
             obtained from user interactions with 200 complex databases over 138 domains.""",
             features=features,
-            supervised_keys=None
+            supervised_keys=None,
+            homepage=_HOMEPAGE,
+            license=_LICENSE,
+            citation=_CITATION
         )
 
-    def _split_generators(self, dl_manager: None) -> list[datasets.SplitGenerator]:
+    def _split_generators(self, dl_manager: datasets.DownloadManager) -> list[datasets.SplitGenerator]:
+
+        downloaded_filepath = dl_manager.download_and_extract(_URL)
 
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "data_filepath": DATASETS_PATH + "sparc/train.json",
-                    "db_path": DATASETS_PATH + "sparc/database"
+                    "data_filepath": downloaded_filepath + "/sparc/train.json",
+                    "db_path": downloaded_filepath + "/sparc/database"
                 },
             ),
 
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 gen_kwargs={
-                    "data_filepath": DATASETS_PATH + "sparc/dev.json",
-                    "db_path": DATASETS_PATH + "sparc/database"
+                    "data_filepath": downloaded_filepath + "/sparc/dev.json",
+                    "db_path": downloaded_filepath + "/sparc/database"
                 },
             ),
         ]

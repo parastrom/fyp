@@ -7,6 +7,49 @@ from third_party.spider.get_tables import dump_db_json_schema
 
 #TODO Add licensing and citations
 
+_CITATION = """\
+@inproceedings{yu-etal-2019-cosql,
+    title = "{C}o{SQL}: A Conversational Text-to-{SQL} Challenge Towards Cross-Domain Natural Language Interfaces to Databases",
+    author = "Yu, Tao  and
+      Zhang, Rui  and
+      Er, Heyang  and
+      Li, Suyi  and
+      Xue, Eric  and
+      Pang, Bo  and
+      Lin, Xi Victoria  and
+      Tan, Yi Chern  and
+      Shi, Tianze  and
+      Li, Zihan  and
+      Jiang, Youxuan  and
+      Yasunaga, Michihiro  and
+      Shim, Sungrok  and
+      Chen, Tao  and
+      Fabbri, Alexander  and
+      Li, Zifan  and
+      Chen, Luyao  and
+      Zhang, Yuwen  and
+      Dixit, Shreya  and
+      Zhang, Vincent  and
+      Xiong, Caiming  and
+      Socher, Richard  and
+      Lasecki, Walter  and
+      Radev, Dragomir",
+    booktitle = "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)",
+    month = nov,
+    year = "2019",
+    address = "Hong Kong, China",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/D19-1204",
+    doi = "10.18653/v1/D19-1204",
+    pages = "1962--1979",
+    abstract = "We present CoSQL, a corpus for building cross-domain, general-purpose database (DB) querying dialogue systems. It consists of 30k+ turns plus 10k+ annotated SQL queries, obtained from a Wizard-of-Oz (WOZ) collection of 3k dialogues querying 200 complex DBs spanning 138 domains. Each dialogue simulates a real-world DB query scenario with a crowd worker as a user exploring the DB and a SQL expert retrieving answers with SQL, clarifying ambiguous questions, or otherwise informing of unanswerable questions. When user questions are answerable by SQL, the expert describes the SQL and execution results to the user, hence maintaining a natural interaction flow. CoSQL introduces new challenges compared to existing task-oriented dialogue datasets: (1) the dialogue states are grounded in SQL, a domain-independent executable representation, instead of domain-specific slot value pairs, and (2) because testing is done on unseen databases, success requires generalizing to new domains. CoSQL includes three tasks: SQL-grounded dialogue state tracking, response generation from query results, and user dialogue act prediction. We evaluate a set of strong baselines for each task and show that CoSQL presents significant challenges for future research. The dataset, baselines, and leaderboard will be released at https://yale-lily.github.io/cosql.",
+}
+"""
+
+_HOMEPAGE = "https://yale-lily.github.io/cosql"
+_LICENSE = "CC BY-SA 4.0"
+_URL = "https://drive.google.com/uc?export=download&confirm=9iBg&id=14x6lsWqlu6gR-aYxa6cemslDN3qT3zxP"
+
 class CoSQL(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
 
@@ -52,24 +95,29 @@ class CoSQL(datasets.GeneratorBasedBuilder):
             description="CoSQL is a large-scale dataset for training and testing task oriented dialog agents with SQL",
             features=features,
             supervised_keys=None,
+            homepage=_HOMEPAGE,
+            license=_LICENSE,
+            citation=_CITATION
         )
 
-    def _split_generators(self, dl_manager: None) -> list[datasets.SplitGenerator]:
+    def _split_generators(self, dl_manager:  datasets.DownloadManager) -> list[datasets.SplitGenerator]:
+
+        downloaded_filepath = dl_manager.download_and_extract(_URL)
 
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "data_filepath": DATASETS_PATH + "cosql_dataset/sql_state_tracking/cosql_train.json",
-                    "db_path": DATASETS_PATH + "cosql_dataset/database"
+                    "data_filepath": downloaded_filepath + "/cosql_dataset/sql_state_tracking/cosql_train.json",
+                    "db_path": downloaded_filepath + "/cosql_dataset/database"
                 },
             ),
 
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 gen_kwargs={
-                    "data_filepath": DATASETS_PATH + "cosql_dataset/sql_state_tracking/cosql_dev.json",
-                    "db_path": DATASETS_PATH + "cosql_dataset/database"
+                    "data_filepath": downloaded_filepath + "/cosql_dataset/sql_state_tracking/cosql_dev.json",
+                    "db_path": downloaded_filepath + "/cosql_dataset/database"
                 },
             ),
         ]

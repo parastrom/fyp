@@ -1,10 +1,26 @@
+# following
+# https://huggingface.co/docs/datasets/v1.12.0/dataset_script.html
+
 import json
 
 import datasets
 from settings import DATASETS_PATH
 from third_party.spider.get_tables import dump_db_json_schema
 
-#TODO Add licensing and citations
+# TODO Add licensing and citations
+
+_CITATION = """\
+@article{yu2018spider,
+  title={Spider: A large-scale human-labeled dataset for complex and cross-domain semantic parsing and text-to-sql task},
+  author={Yu, Tao and Zhang, Rui and Yang, Kai and Yasunaga, Michihiro and Wang, Dongxu and Li, Zifan and Ma, James and Li, Irene and Yao, Qingning and Roman, Shanelle and others},
+  journal={arXiv preprint arXiv:1809.08887},
+  year={2018}
+}
+"""
+_LICENSE = "CC BY-SA 4.0"
+_HOMEPAGE = "https://yale-lily.github.io/spider"
+_URL = "https://drive.google.com/uc?export=download&confirm=9iBg&id=1_AckYkinAnhqmRQtGsQgUKAnTHxxX5J0"
+
 
 class Spider(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
@@ -51,24 +67,30 @@ class Spider(datasets.GeneratorBasedBuilder):
             parsing and text-toSQL dataset annotated by 11 college students""",
             features=features,
             supervised_keys=None,
+            homepage=_HOMEPAGE,
+            license=_LICENSE,
+            citation=_CITATION
+
         )
 
-    def _split_generators(self, dl_manager: None) -> list[datasets.SplitGenerator]:
+    def _split_generators(self, dl_manager: datasets.DownloadManager) -> list[datasets.SplitGenerator]:
+
+        downloaded_filepath = dl_manager.download_and_extract(_URL)
 
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "data_filepath": DATASETS_PATH + "spider/train_spider.json",
-                    "db_path": DATASETS_PATH + "spider/database"
+                    "data_filepath": downloaded_filepath + "/spider/train_spider.json",
+                    "db_path": downloaded_filepath + "/spider/database"
                 },
             ),
 
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 gen_kwargs={
-                    "data_filepath": DATASETS_PATH + "spider/dev.json",
-                    "db_path": DATASETS_PATH + "spider/database"
+                    "data_filepath": downloaded_filepath + "/spider/dev.json",
+                    "db_path": downloaded_filepath + "/spider/database"
                 },
             ),
         ]

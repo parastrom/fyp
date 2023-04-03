@@ -1,16 +1,10 @@
-import sys
-
-import json
-from argparse import ArgumentParser
-
 import datasets
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
+from dataproc import utils as dutils
 
 from settings import DATASETS_PATH
-from dataset_loader.spider import Spider
-from dataset_loader.sparc import SParC
 
 # args = ArgumentParser(description="Conversion of JSON files to custom format")
 # args.add_argument("--datasets", type=str, default=DATASETS_PATH)
@@ -79,17 +73,17 @@ from dataset_loader.sparc import SParC
 #
 # #print(spider_train)
 
-test = datasets.load_dataset(path="./dataset_loader/cosql.py", cache_dir=DATASETS_PATH, split='train')
+test = datasets.load_dataset(path="dataproc/loaders/spider.py", cache_dir=DATASETS_PATH, split='train')
 # primary = test["db_primary_keys"]
 # cols = test["db_column_names"]
 #table_names = test["db_table_names"]
 # db_ids = test["db_id"]
 
-db_ids, db_indexes = np.unique(test["db_id"], return_index=True)
-
-# unique_db_idxs = test.unique("db_id")
-
-db_graphs = dict()
+# db_ids, db_indexes = np.unique(test["db_id"], return_index=True)
+#
+# # unique_db_idxs = test.unique("db_id")
+#
+# db_graphs = dict()
 
 # for idx, db_id in enumerate(db_ids):
 #     db_idx = db_indexes[idx]
@@ -118,33 +112,33 @@ db_graphs = dict()
 #     if idx > 2:
 #         break
 
-db_idx = 0
-
-columns = test["db_column_names"][db_idx]
-table_names = test["db_table_names"][db_idx]
-column_types = test["db_column_types"][db_idx]
-foreign_keys = test["db_foreign_keys"][db_idx]
-primary_keys = test["db_primary_keys"][db_idx]
-
-g = nx.Graph()
-
-for i, sample in enumerate(zip(columns["table_id"][1:], columns["column_name"][1:])):
-    table_idx = sample[0]
-    table = table_names[table_idx]
-    col_name = sample[1].replace(" ", "_")
-    g.add_node(
-        i+1, id=f"{table}.{col_name}", name=col_name, table=table,
-        primary=True if i+1 in primary_keys["column_id"] else False,
-        type=column_types[i+1]
-    )
-
-    for (n1, n2) in zip(foreign_keys["column_id"], foreign_keys["other_column_id"]):
-        g.add_edge(n1-1 , n2-1, foreign=True)
-
-plt.figure(figsize=(10, 10), dpi=150)
-nx.draw(g, node_size=60, with_labels=True,)
-plt.savefig("Graph.png", format="PNG")
-plt.show()
+# db_idx = 0
+#
+# columns = test["db_column_names"][db_idx]
+# table_names = test["db_table_names"][db_idx]
+# column_types = test["db_column_types"][db_idx]
+# foreign_keys = test["db_foreign_keys"][db_idx]
+# primary_keys = test["db_primary_keys"][db_idx]
+#
+# g = nx.Graph()
+#
+# for i, sample in enumerate(zip(columns["table_id"][1:], columns["column_name"][1:])):
+#     table_idx = sample[0]
+#     table = table_names[table_idx]
+#     col_name = sample[1].replace(" ", "_")
+#     g.add_node(
+#         i+1, id=f"{table}.{col_name}", name=col_name, table=table,
+#         primary=True if i+1 in primary_keys["column_id"] else False,
+#         type=column_types[i+1]
+#     )
+#
+#     for (n1, n2) in zip(foreign_keys["column_id"], foreign_keys["other_column_id"]):
+#         g.add_edge(n1-1, n2-1, foreign=True)
+#
+# plt.figure(figsize=(10, 10), dpi=150)
+# nx.draw(g, node_size=60, with_labels=True,)
+# plt.savefig("Graph.png", format="PNG")
+# plt.show()
 # counter = 0
 # for i, sample in enumerate(cols):
 #     db_id = test["db_id"][i]
@@ -158,4 +152,4 @@ plt.show()
 #         counter += 1
 # def graph_gen(dt: datasets.Dataset):
 
-
+schemas = dutils.process(test)

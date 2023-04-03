@@ -1,42 +1,35 @@
+# following
+# https://huggingface.co/docs/datasets/v1.12.0/dataset_script.html
+
 import json
+
 import datasets
 from settings import DATASETS_PATH
 from third_party.spider.get_tables import dump_db_json_schema
 
-
 # TODO Add licensing and citations
 
-_CITATION = """
-@InProceedings{Yu&al.19,
-  title     = {SParC: Cross-Domain Semantic Parsing in Context},
-  author    = {Tao Yu and Rui Zhang and Michihiro Yasunaga and Yi Chern Tan and Xi Victoria Lin and Suyi Li and Heyang Er, Irene Li and Bo Pang and Tao Chen and Emily Ji and Shreya Dixit and David Proctor and Sungrok Shim and Jonathan Kraft, Vincent Zhang and Caiming Xiong and Richard Socher and Dragomir Radev},
-  booktitle = {Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
-  year      = {2019},
-  address   = {Florence, Italy},
-  publisher = {Association for Computational Linguistics}
-}
-@inproceedings{Yu&al.18c,
-  title     = {Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Semantic Parsing and Text-to-SQL Task},
-  author    = {Tao Yu and Rui Zhang and Kai Yang and Michihiro Yasunaga and Dongxu Wang and Zifan Li and James Ma and Irene Li and Qingning Yao and Shanelle Roman and Zilin Zhang and Dragomir Radev}
-  booktitle = "Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing",
-  address   = "Brussels, Belgium",
-  publisher = "Association for Computational Linguistics",
-  year      = 2018
+_CITATION = """\
+@article{yu2018spider,
+  title={Spider: A large-scale human-labeled dataproc for complex and cross-domain semantic parsing and text-to-sql task},
+  author={Yu, Tao and Zhang, Rui and Yang, Kai and Yasunaga, Michihiro and Wang, Dongxu and Li, Zifan and Ma, James and Li, Irene and Yao, Qingning and Roman, Shanelle and others},
+  journal={arXiv preprint arXiv:1809.08887},
+  year={2018}
 }
 """
-
-_HOMEPAGE = "https://yale-lily.github.io/sparc"
 _LICENSE = "CC BY-SA 4.0"
-_URL = "https://drive.google.com/uc?export=download&confirm=9iBg&id=13Abvu5SUMSP3SJM-ZIj66mOkeyAquR73"
+_HOMEPAGE = "https://yale-lily.github.io/spider"
+_URL = "https://drive.google.com/uc?export=download&confirm=9iBg&id=1_AckYkinAnhqmRQtGsQgUKAnTHxxX5J0"
 
-class SParC(datasets.GeneratorBasedBuilder):
+
+class Spider(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
 
     BUILDER_CONFIGS = [
         datasets.BuilderConfig(
-            name="sparc",
+            name="spider",
             version=VERSION,
-            description="A dataset for cross-domain Semantic Parsing in Context.",
+            description="Spider: A Large-Scale Human-Labeled Dataset for Text-to-SQL Tasks",
         ),
     ]
 
@@ -48,8 +41,7 @@ class SParC(datasets.GeneratorBasedBuilder):
         features = datasets.Features(
             {
                 "query": datasets.Value("string"),
-                "utterances": datasets.features.Sequence(datasets.Value("string")),
-                "turn_idx": datasets.Value("int32"),
+                "question": datasets.Value("string"),
                 "db_id": datasets.Value("string"),
                 "db_path": datasets.Value("string"),
                 "db_table_names": datasets.features.Sequence(datasets.Value("string")),
@@ -71,15 +63,14 @@ class SParC(datasets.GeneratorBasedBuilder):
         )
 
         return datasets.DatasetInfo(
-            description="""SParC is a dataset for cross-domain Semantic Parsing in Context. 
-            It is the context-dependent/multi-turn version of the Spider task, a complex and cross-domain text-to-SQL challenge. 
-            SParC consists of 4,298 coherent question sequences (12k+ unique individual questions annotated with SQL queries annotated by 14 Yale students),
-            obtained from user interactions with 200 complex databases over 138 domains.""",
+            description="""Spider is a large-scale complex and cross-domain semantic 
+            parsing and text-toSQL dataproc annotated by 11 college students""",
             features=features,
             supervised_keys=None,
             homepage=_HOMEPAGE,
             license=_LICENSE,
             citation=_CITATION
+
         )
 
     def _split_generators(self, dl_manager: datasets.DownloadManager) -> list[datasets.SplitGenerator]:
@@ -90,36 +81,35 @@ class SParC(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 gen_kwargs={
-                    "data_filepath": downloaded_filepath + "/sparc/train.json",
-                    "db_path": downloaded_filepath + "/sparc/database"
+                    "data_filepath": downloaded_filepath + "/spider/train_spider.json",
+                    "db_path": downloaded_filepath + "/spider/database"
                 },
             ),
 
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 gen_kwargs={
-                    "data_filepath": downloaded_filepath + "/sparc/dev.json",
-                    "db_path": downloaded_filepath + "/sparc/database"
+                    "data_filepath": downloaded_filepath + "/spider/dev.json",
+                    "db_path": downloaded_filepath + "/spider/database"
                 },
             ),
         ]
 
     def _generate_examples(self, data_filepath, db_path):
-        """"Returns the examples in raw text form"""
-
+        """Returns the examples in raw text form"""
         with open(data_filepath, encoding="utf-8") as f:
-            sparc = json.load(f)
+            spider = json.load(f)
 
-            idx = 0
-            for sample in sparc:
-                db_id = sample["database_id"]
+            for idx, sample in enumerate(spider):
+                db_id = sample["db_id"]
                 if db_id not in self.schema_cache:
                     self.schema_cache[db_id] = dump_db_json_schema(
                         db_path + "/" + db_id + "/" + db_id + ".sqlite", db_id
                     )
                 schema = self.schema_cache[db_id]
-
-                db_stuff = {
+                yield idx, {
+                    "query": sample["query"],
+                    "question": sample["question"],
                     "db_id": db_id,
                     "db_path": db_path,
                     "db_table_names": schema["table_names_original"],
@@ -127,6 +117,7 @@ class SParC(datasets.GeneratorBasedBuilder):
                         {"table_id": table_id, "column_name": column_name}
                         for table_id, column_name in schema["column_names_original"]
                     ],
+
                     "db_column_types": schema["column_types"],
                     "db_primary_keys": [{"column_id": column_id} for column_id in schema["primary_keys"]],
                     "db_foreign_keys": [
@@ -134,23 +125,3 @@ class SParC(datasets.GeneratorBasedBuilder):
                         for column_id, other_column_id in schema["foreign_keys"]
                     ],
                 }
-
-                yield idx, {
-                    "utterances": [sample["final"]["utterance"]],
-                    "query": sample["final"]["query"],
-                    "turn_idx": -1,
-                    **db_stuff,
-                }
-
-                idx += 1
-
-                utterances = []
-                for turn_idx, turn in enumerate(sample["interaction"]):
-                    utterances.append(turn["utterance"].strip())
-                    yield idx, {
-                        "utterances": list(utterances),
-                        "query": turn["query"],
-                        "turn_idx": turn_idx,
-                        **db_stuff
-                    }
-                    idx += 1

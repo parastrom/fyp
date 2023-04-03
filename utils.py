@@ -12,7 +12,7 @@ def db_to_graph(dataset: dt.Dataset):
     """
     At any given moment we cannot isolate a specific database due
     to the way we loaded in our data, therefore we take our entire
-    dataset and construct a dictionary with the db_id as key and
+    dataproc and construct a dictionary with the db_id as key and
     the graph as the value.
 
     Convert the given database to a DGL graph\n

@@ -50,6 +50,21 @@ def postprocess_original_name(s: str):
     return re.sub(r'([A-Z]+)', r' \1', s).replace('_', ' ').lower().strip()
 
 
+
+
+
+def _extract_column_cells(table_names, db_path):
+    # Per db_id, navigate to the db open the database generate a dictionary with the format
+    """
+    {
+        "table_name": [
+            [row of table in list form],
+        ]
+    }
+    """
+
+
+
 def process(data: datasets.Dataset):
     schemas = {}
 

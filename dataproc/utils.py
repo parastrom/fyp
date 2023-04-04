@@ -1,6 +1,9 @@
+import json
+
 import attr
 import re
 import datasets
+import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 from torch.utils.data import Dataset
@@ -24,6 +27,7 @@ class Column:
     name = attr.ib()
     orig_name = attr.ib()
     type = attr.ib()
+    cells = attr.ib(factory=list)
     foreign_key = attr.ib(default=None)
 
 
@@ -34,6 +38,8 @@ class Table:
     orig_name = attr.ib()
     columns = attr.ib(factory=list)
     primary_keys = attr.ib(factory=list)
+    primary_keys_id = attr.ib(factory=list)
+    foreign_key_tables = attr.ib(factory=set)
 
 
 @attr.s
@@ -50,19 +56,23 @@ def postprocess_original_name(s: str):
     return re.sub(r'([A-Z]+)', r' \1', s).replace('_', ' ').lower().strip()
 
 
+def _extract_column_cells(table_names, db_content):
 
+    column_cells = [table_names]
 
+    for table_name in table_names:
+        table_info = db_content.get(table_name, None)
+        if table_info is None:
+            return None
 
-def _extract_column_cells(table_names, db_path):
-    # Per db_id, navigate to the db open the database generate a dictionary with the format
-    """
-    {
-        "table_name": [
-            [row of table in list form],
-        ]
-    }
-    """
+        rows = table_info.get('cell', [])
+        if len(rows) == 0:
+            rows = [[] for _ in db_content[table_name]['header']]
+            column_cells.extend(rows)
+        else:
+            column_cells.extend(list(zip(*rows)))
 
+    return column_cells
 
 
 def process(data: datasets.Dataset):
@@ -70,8 +80,9 @@ def process(data: datasets.Dataset):
 
     # Get db names and the index of their first appearance
     db_ids, db_indexes = np.unique(data["db_id"], return_index=True)
+    db_path = data["db_path"][0]
 
-    for idx, db_id in enumerate(db_ids):
+    for idx, db_id in enumerate(tqdm(db_ids)):
 
         db_idx = db_indexes[idx]
 
@@ -80,6 +91,18 @@ def process(data: datasets.Dataset):
         column_types = data["db_column_types"][db_idx]
         foreign_keys = data["db_foreign_keys"][db_idx]
         primary_keys = data["db_primary_keys"][db_idx]
+        json_db_content_path = db_path + "/" + db_id + "/" + db_id + "_content.json"
+
+        db_content = {}
+
+        with open(json_db_content_path, "r") as json_file:
+            db_content = json.load(json_file)
+
+        column_cells = _extract_column_cells(table_names, db_content)
+
+        if column_cells is None:
+            column_cells = [[] for _ in db_columns['column_name']]
+        assert len(column_cells) == len(db_columns['column_name'])
 
         schema = {
             "db_id": db_id,
@@ -93,7 +116,7 @@ def process(data: datasets.Dataset):
 
         tables = tuple(
             Table(
-                id=idx,
+                id=i,
                 name=name.split(),
                 orig_name=name,
             )
@@ -107,6 +130,10 @@ def process(data: datasets.Dataset):
                 name=col_name.split(),
                 orig_name=col_name,
                 type=col_type,
+                cells=[
+                    x for x in set([str(c) for c in column_cells[i]])
+                    if len(x) <= 20 or x.startswith('item_')
+                ],
             )
             for i, (table_id, col_name, col_type) in enumerate(zip(
                 db_columns["table_id"],
@@ -125,6 +152,7 @@ def process(data: datasets.Dataset):
             # Add primary keys
             column = columns[col_id]
             column.table.primary_keys.append(column)
+            column.table.primary_keys_id.append(col_id)
 
         foreign_key_graph = nx.DiGraph()
         for (source_col_id, dest_col_id) in zip(foreign_keys["column_id"], foreign_keys["other_column_id"]):
@@ -133,6 +161,7 @@ def process(data: datasets.Dataset):
             source_col = columns[source_col_id]
             dest_col = columns[dest_col_id]
             source_col.foreign_key = dest_col
+            columns[source_col_id].table.foreign_key_tables.add(dest_col_id)
             foreign_key_graph.add_edge(
                 source_col.table.id,
                 dest_col.table.id,
@@ -145,6 +174,7 @@ def process(data: datasets.Dataset):
             )
 
         assert db_id not in schemas
+
         schemas[db_id] = Schema(db_id, tables, columns, foreign_key_graph, schema)
 
     return schemas
@@ -199,6 +229,4 @@ class SpiderDataset(Dataset):
             table_name = data[dict['table_id']]
 
             column_id = f"{table_name.lower()}_{column_name.lower()}"
-
-
 

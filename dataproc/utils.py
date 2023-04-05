@@ -43,7 +43,7 @@ class Table:
 
 
 @attr.s
-class Schema:
+class DB:
     db_id = attr.ib()
     tables = attr.ib()
     columns = attr.ib()
@@ -175,7 +175,7 @@ def process(data: datasets.Dataset):
 
         assert db_id not in schemas
 
-        schemas[db_id] = Schema(db_id, tables, columns, foreign_key_graph, schema)
+        schemas[db_id] = DB(db_id, tables, columns, foreign_key_graph, schema)
 
     return schemas
 

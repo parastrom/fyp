@@ -44,6 +44,7 @@ class Spider(datasets.GeneratorBasedBuilder):
                 "question": datasets.Value("string"),
                 "db_id": datasets.Value("string"),
                 "db_path": datasets.Value("string"),
+                "data_filepath": datasets.Value("string"),
                 "db_table_names": datasets.features.Sequence(datasets.Value("string")),
                 "db_column_names": datasets.features.Sequence(
                     {
@@ -112,6 +113,7 @@ class Spider(datasets.GeneratorBasedBuilder):
                     "question": sample["question"],
                     "db_id": db_id,
                     "db_path": db_path,
+                    "data_filepath": data_filepath,
                     "db_table_names": schema["table_names_original"],
                     "db_column_names": [
                         {"table_id": table_id, "column_name": column_name}

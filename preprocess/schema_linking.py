@@ -1,7 +1,8 @@
 import json
+import os.path
 import sys
 
-#setting path
+# setting path
 sys.path.append('../dataproc')
 
 from dataproc import utils
@@ -33,7 +34,7 @@ def build_cell_index(db_dict):
         db.column_cells_index = column_cells
 
 
-def schema_linking(query, db, extra_values):
+def search_values(query, db, extra_values):
     lst_match_values = []
     for column, cell_index in zip(db.columns, db.column_cells_index):
         if column.id == 0:
@@ -82,9 +83,8 @@ def extract_value_from_sql(sql_json):
             base_dict[k].extend(v)
 
     def _extract_value_from_sql_cond(cond, dct_col_values):
-        if type(cond[3]) is dict:
-            new_col_values = extract_value_from_sql(cond[3])
-            _merge_dict(dct_col_values, new_col_values)
+        if isinstance(cond[3], dict):
+            _merge_dict(dct_col_values, extract_value_from_sql(cond[3]))
             return
         col_id = cond[2][1][1]
         dct_col_values[col_id].append(cond[3])
@@ -92,24 +92,16 @@ def extract_value_from_sql(sql_json):
             dct_col_values[col_id].append(cond[4])
 
     for table_unit in sql_json['from']['table_units']:
-        if type(table_unit[1]) is dict:
-            new_col_values = extract_value_from_sql(table_unit[1])
-            _merge_dict(dct_col_values, new_col_values)
+        if isinstance(table_unit[1], dict):
+            _merge_dict(dct_col_values, extract_value_from_sql(table_unit[1]))
 
-    for cond in sql_json['where'][::2]:
-        _extract_value_from_sql_cond(cond, dct_col_values)
-    for cond in sql_json['having'][::2]:
-        _extract_value_from_sql_cond(cond, dct_col_values)
+    for key in ['where', 'having']:
+        for cond in sql_json[key][::2]:
+            _extract_value_from_sql_cond(cond, dct_col_values)
 
-    if sql_json['intersect'] is not None:
-        new_col_values = extract_value_from_sql(sql_json['intersect'])
-        _merge_dict(dct_col_values, new_col_values)
-    if sql_json['union'] is not None:
-        new_col_values = extract_value_from_sql(sql_json['union'])
-        _merge_dict(dct_col_values, new_col_values)
-    if sql_json['except'] is not None:
-        new_col_values = extract_value_from_sql(sql_json['except'])
-        _merge_dict(dct_col_values, new_col_values)
+    for key in ['intersect', 'union', 'except']:
+        if sql_json[key] is not None:
+            _merge_dict(dct_col_values, extract_value_from_sql(sql_json[key]))
 
     return dct_col_values
 
@@ -133,7 +125,7 @@ if __name__ == "__main__":
         sql_json = data[idx]['sql']
         extra_values = extract_value_from_sql(sql_json)
 
-        match_values = schema_linking(question, db, extra_values)
+        match_values = search_values(question, db, extra_values)
         lst_output.append({
             "question_id": question_id,
             "question": question,
@@ -141,5 +133,9 @@ if __name__ == "__main__":
             "match_values": match_values
         })
 
-    with open("match_values.json", "w") as out_file:
+    parent_dir = os.path.dirname(db_dct['db_path'][0])
+    outfile_path = parent_dir + "/" + "match_values.json"
+
+    with open(outfile_path, "w") as out_file:
         json.dump(lst_output, out_file, indent=2, ensure_ascii=False)
+

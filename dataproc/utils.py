@@ -1,4 +1,6 @@
 import json
+import logging
+import os.path
 
 import attr
 import re
@@ -6,11 +8,15 @@ import datasets
 import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
+from typing import List, Tuple
 from torch.utils.data import Dataset
 from settings import DATASETS_PATH
-from fuzzywuzzy import fuzz
+from pathlib import Path
 from tqdm import tqdm
+from util import linking
 
+
+g_match_score_threshold = 0.3
 @attr.s
 class Item:
     text: str = attr.ib()
@@ -193,7 +199,68 @@ class SpiderExample(object):
         self.tables = db.tables
         self.db = db
 
-        self.columns_match_cells = self._filter_match_value(json_example['match_values'])
+        self.column_match_cells = self._filter_match_value(json_example['match_values'])
+
+        ernie_inputs = input_encoder.encode(self.question, db,
+                                            self.column_match_cells)
+
+        self.token_ids = ernie_inputs.token_ids
+        self.sent_ids = ernie_inputs.sent_ids
+        self.table_indexes = ernie_inputs.table_indexes
+        self.column_indexes = ernie_inputs.column_indexes
+        self.value_indexes = ernie_inputs.value_indexes
+        self.values = ernie_inputs.value_list
+
+        self.token_mapping = ernie_inputs.token_mapping
+        self.question_tokens = ernie_inputs.orig_question_tokens
+        self.candi_nums = ernie_inputs.candi_nums
+        self.relations = self._compute_relations()
+
+    def _filter_match_values(self, match_values_info):
+        lst_result = []
+        for column_values in match_values_info:
+            filtered_results = []
+            for value, score in column_values:
+                if score > g_match_score_threshold:
+                    filtered_results.append(value)
+                else:
+                    break
+            lst_result.append(filtered_results)
+        return lst_result
+
+    def _compute_relations(self):
+        schema_links = self._linking_wrapper(linking.compute_schema_linking)
+        cell_value_links = self._linking_wrapper(linking.compute_cell_linking)
+        link_info_dict = {
+            'sc_link': schema_links,
+            'cv_link': cell_value_links,
+        }
+
+        q_len = self.column_indexes[0] - 2
+        c_len = len(self.columns)
+        t_len = len(self.tables)
+        total_len = q_len + c_len + t_len
+        relation_matrix = linking.build_relation_matrix(
+            link_info_dict, total_len, q_len, c_len,
+            list(range(c_len + 1)), list(range(t_len + 1)), self.db)
+        return relation_matrix
+
+    def _linking_wrapper(self, fn_linking):
+        """wrapper for linking function, do linking and id convert
+        """
+        link_result = fn_linking(self.question_tokens, self.db)
+
+        # convert words id to BERT word pieces id
+        new_result = {}
+        for m_name, matches in link_result.items():
+            new_match = {}
+            for pos_str, match_type in matches.items():
+                qid_str, col_tab_id_str = pos_str.split(',')
+                qid, col_tab_id = int(qid_str), int(col_tab_id_str)
+                for real_qid in self.token_mapping[qid]:
+                    new_match[f'{real_qid},{col_tab_id}'] = match_type
+            new_result[m_name] = new_match
+        return new_result
 
 
 class SpiderDataset(Dataset):
@@ -214,19 +281,32 @@ class SpiderDataset(Dataset):
 
         self.db_dict = process(spider_data_dict['train'])
         self._examples = []
+        match_values_file = Path(spider_data_dict[0]['db_path']).parent / 'match_values.json'
+        train_spider_file = Path(spider_data_dict[0]['data_filepath'])
+        if not match_values_file.exists():
+            raise FileNotFoundError("match value file not found : "+str(match_values_file))
+        with open(match_values_file) as mval_file, open(train_spider_file) as data_file:
+            self.collate_examples(json.load(data_file), json.load(mval_file))
 
+    def collate_examples(self, spider_json: List[dict], match_values: List[dict]):
 
+        for idx, (item, m_val) in tqdm(enumerate(zip(spider_json, match_values))):
+            db = self.db_dict[item['db_id']]
 
+            if not self.input_encoder.check(item, db):
+                logging.warning(
+                    f'check failed: db_id={item["db_id"]}, question = {item["question"]}'
+                )
+                continue
 
+            if 'question_id' not in item:
+                item['question_id'] = f'qid{idx:06d}'
+                item['match_values'] = m_val["match_values"]
 
-    def _generate_match_values(self, data: datasets.Dataset):
-
-        min_match_score = 75
-        match_values_dict = {}
-
-        for dict in tqdm(data['db_column_names']):
-            column_name = dict['column_name']
-            table_name = data[dict['table_id']]
-
-            column_id = f"{table_name.lower()}_{column_name.lower()}"
-
+            inputs = SpiderExample(item, db, self.input_encoder)
+            if 'sql' not in item or not isinstance(item['sql'], dict) or not self.has_label:
+                outputs = None
+            else:
+                outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
+            self._qid2index[item['question_id']] = len(self._examples)
+            self._examples.append([inputs, outputs])

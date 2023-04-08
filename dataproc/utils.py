@@ -33,6 +33,8 @@ class Column:
     name = attr.ib()
     orig_name = attr.ib()
     type = attr.ib()
+    processed_name = attr.ib(default=None)
+    processed_toks = attr.ib(default=None)
     cells = attr.ib(factory=list)
     foreign_key = attr.ib(default=None)
 
@@ -42,6 +44,8 @@ class Table:
     id = attr.ib()
     name = attr.ib()
     orig_name = attr.ib()
+    processed_name = attr.ib(default=None)
+    processed_toks = attr.ib(default=None)
     columns = attr.ib(factory=list)
     primary_keys = attr.ib(factory=list)
     primary_keys_id = attr.ib(factory=list)
@@ -229,8 +233,8 @@ class SpiderExample(object):
         return lst_result
 
     def _compute_relations(self):
-        schema_links = self._linking_wrapper(linking.compute_schema_linking)
-        cell_value_links = self._linking_wrapper(linking.compute_cell_linking)
+        schema_links = self._linking_wrapper(linking.rasat_schema_linking)
+        cell_value_links = self._linking_wrapper(linking.rasat_cell_linking)
         link_info_dict = {
             'sc_link': schema_links,
             'cv_link': cell_value_links,
@@ -248,7 +252,7 @@ class SpiderExample(object):
     def _linking_wrapper(self, fn_linking):
         """wrapper for linking function, do linking and id convert
         """
-        link_result = fn_linking(self.question_tokens, self.db)
+        link_result = fn_linking(self.question, self.db)
 
         # convert words id to BERT word pieces id
         new_result = {}
@@ -261,6 +265,7 @@ class SpiderExample(object):
                     new_match[f'{real_qid},{col_tab_id}'] = match_type
             new_result[m_name] = new_match
         return new_result
+
 
 
 class SpiderDataset(Dataset):
@@ -310,3 +315,6 @@ class SpiderDataset(Dataset):
                 outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
             self._qid2index[item['question_id']] = len(self._examples)
             self._examples.append([inputs, outputs])
+
+
+

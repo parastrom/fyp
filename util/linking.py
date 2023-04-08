@@ -1,5 +1,8 @@
+import json
 import re
 import string
+
+import datasets
 import numpy as np
 import itertools
 import stanza
@@ -9,7 +12,29 @@ from itertools import combinations
 
 STOPWORDS = set(nltk.corpus.stopwords.words('english'))
 PUNKS = set(a for a in string.punctuation)
-nlp = stanza.Pipeline('en', processors='tokenize,mwt,pos,lemma,depparse', tokenize_pretokenized= False, use_gpu=True)
+nlp = stanza.Pipeline('en', processors='tokenize,mwt,pos,lemma,depparse', tokenize_pretokenized=False, use_gpu=True)
+
+
+def preprocess_name(name: str):
+    if isinstance(name, str):
+        name = name.replace('_', ' ')
+        doc = nlp(name)
+        processed_toks = [w.lemma.lower() for s in doc.sentences for w in s.words]
+        processed_name = " ".join(processed_toks)
+        return processed_name, processed_toks
+
+
+def preprocess_db(db):
+    for table in db.tables:
+        processed_name, processed_toks = preprocess_name(table.name[0])
+        table.processed_name = processed_name
+        table.processed_toks = processed_toks
+
+        for column in table.columns:
+            processed_name, processed_toks = preprocess_name(column.name[0])
+            column.processed_name = processed_name
+            column.processed_toks = processed_toks
+
 
 def preprocess_question(question: str):
     """Tokenize,  lemmatize, lowercase question"""
@@ -41,6 +66,7 @@ def preprocess_question(question: str):
             'relations': q_mat.tolist(),
         }
 
+
 def rasat_schema_linking(question: str, db):
     ""
 
@@ -51,10 +77,14 @@ def rasat_schema_linking(question: str, db):
         except ValueError:
             return False
 
+    preprocess_db(db)
     question_preproc = preprocess_question(question)
 
     question_toks = question_preproc['processed_question_toks']
-    table_toks, column_toks = [x.name for x in db.tables], [x.name for x in db.columns]
+    table_toks = [table.processed_toks for table in db.tables]
+    column_toks = [column.processed_toks for column in db.columns]
+    table_names = [table.processed_name for table in db.tables]
+    column_names = [column.processed_name for column in db.columns]
     q_num, t_num, c_num = len(question_toks), len(table_toks), len(column_toks)
 
 
@@ -65,7 +95,7 @@ def rasat_schema_linking(question: str, db):
     index_pairs = sorted(index_pairs, key=lambda x: x[1] - x[0])
     for i, j in index_pairs:
         phrase = ' '.join(question_toks[i: j])
-        for idx, name in enumerate(table_toks):
+        for idx, name in enumerate(table_names):
             if phrase == name:
                 q_tab_mat[range(i, j), idx] = 'question-table-exactmatch'
             elif (j - i == 1 and phrase in name.split()) or (j - i > 1 and phrase in name):
@@ -73,21 +103,22 @@ def rasat_schema_linking(question: str, db):
 
     # relations between questions and columns
     q_col_mat = np.array([['question-column-nomatch'] * c_num for _ in range(q_num)], dtype='<U100')
-    max_len = max([len(c) for c in column_toks])
+    max_len = max([len(c) for c in column_toks if isinstance(c, list)])
     index_pairs = list(filter(lambda x: x[1] - x[0] <= max_len, combinations(range(q_num + 1), 2)))
     index_pairs = sorted(index_pairs, key=lambda x: x[1] - x[0])
     for i, j in index_pairs:
         phrase = ' '.join(question_toks[i: j])
-        for idx, name in enumerate(column_toks):
-            if phrase == name:
-                q_col_mat[range(i, j), idx] = 'question-column-exactmatch'
-            elif (j - i == 1 and phrase in name.split()) or (j - i > 1 and phrase in name):
-                q_col_mat[range(i, j), idx] = 'question-column-partialmatch'
+        for idx, name in enumerate(column_names):
+            if name is not None:
+                if phrase == name:
+                    q_col_mat[range(i, j), idx] = 'question-column-exactmatch'
+                elif (j - i == 1 and phrase in name.split()) or (j - i > 1 and phrase in name):
+                    q_col_mat[range(i, j), idx] = 'question-column-partialmatch'
 
     return {"q_col_match": q_col_mat, "q_tab_match": q_tab_mat}
 
 
-def rasat_cell_linking(tokens, db, cells):
+def rasat_cell_linking(tokens, db):
 
     def is_number(word):
         """check if input is a number"""
@@ -96,12 +127,6 @@ def rasat_cell_linking(tokens, db, cells):
             return True
         except:
             return False
-
-    raw_toks = tokens
-    column_names_original = [x.name for x in db.columns]
-    table_names_original = [x.name for x in db.tables]
-    column_toks = [x.split() for x in column_names_original]
-    q_col_match = dict()
 
     q_val_match = dict()
     num_date_match = dict()
@@ -118,7 +143,7 @@ def rasat_cell_linking(tokens, db, cells):
             token = str(float(token))
 
         for col_id, column in col_id2list.items():
-            key = f'{q_id}{col_id}'
+            key = f'{q_id},{col_id}'
             col_values = column.cells
             for cell_value in col_values:
                 if is_number(cell_value):
@@ -263,12 +288,12 @@ def compute_cell_value_linking(tokens, db):
         for col_id, column in enumerate(db.columns):
             # word is number
             if num_flag:
-                if column.dtype in ("number", "real", "time"
+                if column.type in ("number", "real", "time"
                                     ):  # TODO fine-grained date
-                    rel = 'NUMBER' if column.dtype == 'real' else column.dtype.upper(
+                    rel = 'NUMBER' if column.type == 'real' else column.type.upper(
                     )
                     num_date_match[f"{q_id},{col_id}"] = rel
-            elif column.dtype.lower(
+            elif column.type.lower(
             ) == 'binary':  # binary condition should use special process
                 continue
             elif check_cell_match(word, column.cells):
@@ -304,3 +329,25 @@ def clamp(value, abs_max):
     value = max(-abs_max, value)
     value = min(abs_max, value)
     return value
+
+
+if __name__ == '__main__':
+
+    from settings import DATASETS_PATH
+    from dataproc import utils
+    from pathlib import Path
+
+    train_ds = datasets.load_dataset(path="../dataproc/loaders/spider.py", cache_dir=DATASETS_PATH, split='train')
+    train_spider_file = Path(train_ds[0]['data_filepath'])
+    dbs = utils.process(train_ds)
+    with open(train_spider_file) as data_file:
+        spider_json = json.load(data_file)
+
+    for idx, sample in enumerate(train_ds):
+        db = dbs[sample['db_id']]
+        question = sample['question']
+        question_toks = question.split()
+        rasat_schema = rasat_schema_linking(question, db)
+        normal_schema = compute_schema_linking(question_toks, db)
+        rasat_cell = rasat_cell_linking(question_toks, db)
+        normal_cell = compute_cell_value_linking(question_toks, db)

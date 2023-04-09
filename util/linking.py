@@ -56,8 +56,8 @@ def preprocess_question(question: str):
             ['question-question-dist' + str(i) if i != 0 else 'question-question-identity'
               for i in range(-max_relative_dist, max_relative_dist+1, 1)] + \
             ['question-question-generic'] * (q_num - max_relative_dist - 1)
-        starting  = q_num - 1
-        q_mat = np.array([dist_vec[starting - i : starting - i + q_num] for i in range(q_num)], dtype=dtype)
+        starting = q_num - 1
+        q_mat = np.array([dist_vec[starting - i: starting - i + q_num] for i in range(q_num)], dtype=dtype)
 
         return {
             'raw_question_toks': raw_toks,
@@ -331,6 +331,64 @@ def clamp(value, abs_max):
     return value
 
 
+def convert_tokens_to_question_format(tokens, cell_linking, schema_linking):
+    token_mapping = {}
+
+    # Add cell_linking values to the token_mapping
+    for key, value in cell_linking['q_val_match'].items():
+        r, c = map(int, key.split(','))
+        token_mapping[f'question_{r}_{c}'] = value.lower()
+
+    for key, value in cell_linking['num_date_match'].items():
+        r, c = map(int, key.split(','))
+        token_mapping[f'question_{r}_{c}'] = value.lower()
+
+    # Add schema_linking values to the token_mapping
+    for r in range(schema_linking['q_col_match'].shape[0]):
+        for c in range(schema_linking['q_col_match'].shape[1]):
+            if schema_linking['q_col_match'][r, c] != 'question-column-nomatch':
+                token_mapping[f'question_{r}_{c}'] = schema_linking['q_col_match'][r, c].lower()
+
+    for r in range(schema_linking['q_tab_match'].shape[0]):
+        for c in range(schema_linking['q_tab_match'].shape[1]):
+            if schema_linking['q_tab_match'][r, c] != 'question-table-nomatch':
+                token_mapping[f'question_{r}_{c}'] = schema_linking['q_tab_match'][r, c].lower()
+
+    # Replace tokens in the input list with their corresponding question_r_c format
+    converted_tokens = [token_mapping.get(token, token) for token in tokens]
+
+    return converted_tokens
+
+
+def build_relation_matrix(cell_links, schema_links, tokens):
+    n_row, n_col, n_tok = len(schema_links['q_col_match']), len(schema_links['q_col_match'][0]), len(tokens)
+    relation_matrix = np.zeros((n_tok, n_row * n_col), dtype=np.int64)
+
+    # For cell linking
+    for key, value in cell_links['q_val_match'].items():
+        r, c = map(int, key.split(','))
+        relation_matrix[r, r * n_col + c] = 1
+
+    for key, value in cell_links['num_date_match'].items():
+        r, c = map(int, key.split(','))
+        relation_matrix[r, r * n_col + c] = 1
+
+    for r in range(schema_links['q_col_match'].shape[0]):
+        for c in range(schema_links['q_col_match'].shape[1]):
+            match_type = schema_links['q_col_match'][r, c]
+            if match_type in {'question-column-exactmatch', 'question-column-partialmatch'}:
+                relation_matrix[r, r * n_col + c] = 1
+
+    for r in range(schema_links['q_tab_match'].shape[0]):
+        for c in range(schema_links['q_tab_match'].shape[1]):
+            match_type = schema_links['q_tab_match'][r, c]
+            if match_type in {'question-table-exactmatch', 'question-table-partialmatch'}:
+                for col_idx in range(n_col):
+                    relation_matrix[r, r * n_col + col_idx] = 1
+
+    return relation_matrix
+
+
 if __name__ == '__main__':
 
     from settings import DATASETS_PATH
@@ -351,3 +409,6 @@ if __name__ == '__main__':
         normal_schema = compute_schema_linking(question_toks, db)
         rasat_cell = rasat_cell_linking(question_toks, db)
         normal_cell = compute_cell_value_linking(question_toks, db)
+        relation_matrix = build_relation_matrix(rasat_cell, rasat_schema, question_toks)
+
+

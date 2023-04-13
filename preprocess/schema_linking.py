@@ -5,7 +5,7 @@ import sys
 # setting path
 sys.path.append('../dataproc')
 
-from dataproc import utils
+from dataproc import spider_dataset
 import datasets
 from settings import DATASETS_PATH
 from collections import defaultdict

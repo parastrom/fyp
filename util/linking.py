@@ -302,6 +302,329 @@ def compute_cell_value_linking(tokens, db):
     cv_link = {"num_date_match": num_date_match, "cell_match": cell_match}
     return cv_link
 
+class Relations(object):
+    """Docstring for Relations. """
+
+    def __init__(self,
+                 qq_max_dist=2,
+                 cc_foreign_key=True,
+                 cc_table_match=True,
+                 cc_max_dist=2,
+                 ct_foreign_key=True,
+                 ct_table_match=True,
+                 tc_table_match=True,
+                 tc_foreign_key=True,
+                 tt_max_dist=2,
+                 tt_foreign_key=True,
+                 merge_types=False,
+                 sc_link=True,
+                 cv_link=True):
+        super(Relations, self).__init__()
+
+        self.qq_max_dist = qq_max_dist
+        self.cc_foreign_key = cc_foreign_key
+        self.cc_table_match = cc_table_match
+        self.cc_max_dist = cc_max_dist
+        self.ct_foreign_key = ct_foreign_key
+        self.ct_table_match = ct_table_match
+        self.tc_table_match = tc_table_match
+        self.tc_foreign_key = tc_foreign_key
+        self.tt_max_dist = tt_max_dist
+        self.tt_foreign_key = tt_foreign_key
+        self.merge_types = merge_types
+        self.sc_link = sc_link
+        self.cv_link = cv_link
+
+        self.relation_ids = {}
+
+        def add_relation(name):
+            self.relation_ids[name] = len(self.relation_ids)
+            print('relation: %s --> %d', name, self.relation_ids[name])
+
+        ##< TODO: add_relation('[UNK]')
+
+        def add_rel_dist(name, max_dist):
+            for i in range(-max_dist, max_dist + 1):
+                add_relation((name, i))
+
+        add_rel_dist('qq_dist', qq_max_dist)
+
+        add_relation('qc_default')
+        # if qc_token_match:
+        #    add_relation('qc_token_match')
+
+        add_relation('qt_default')
+        # if qt_token_match:
+        #    add_relation('qt_token_match')
+
+        add_relation('cq_default')
+        # if cq_token_match:
+        #    add_relation('cq_token_match')
+
+        add_relation('cc_default')
+        if cc_foreign_key:
+            add_relation('cc_foreign_key_forward')
+            add_relation('cc_foreign_key_backward')
+        if cc_table_match:
+            add_relation('cc_table_match')
+        add_rel_dist('cc_dist', cc_max_dist)
+
+        add_relation('ct_default')
+        if ct_foreign_key:
+            add_relation('ct_foreign_key')
+        if ct_table_match:
+            add_relation('ct_primary_key')
+            add_relation('ct_table_match')
+            add_relation('ct_any_table')
+
+        add_relation('tq_default')
+        # if cq_token_match:
+        #    add_relation('tq_token_match')
+
+        add_relation('tc_default')
+        if tc_table_match:
+            add_relation('tc_primary_key')
+            add_relation('tc_table_match')
+            add_relation('tc_any_table')
+        if tc_foreign_key:
+            add_relation('tc_foreign_key')
+
+        add_relation('tt_default')
+        if tt_foreign_key:
+            add_relation('tt_foreign_key_forward')
+            add_relation('tt_foreign_key_backward')
+            add_relation('tt_foreign_key_both')
+        add_rel_dist('tt_dist', tt_max_dist)
+
+        # schema linking relations
+        # forward_backward
+        if sc_link:
+            add_relation('qcCEM')
+            add_relation('cqCEM')
+            add_relation('qtTEM')
+            add_relation('tqTEM')
+            add_relation('qcCPM')
+            add_relation('cqCPM')
+            add_relation('qtTPM')
+            add_relation('tqTPM')
+
+        if cv_link:
+            add_relation("qcNUMBER")
+            add_relation("cqNUMBER")
+            add_relation("qcTIME")
+            add_relation("cqTIME")
+            add_relation("qcCELLMATCH")
+            add_relation("cqCELLMATCH")
+
+        if merge_types:
+            assert not cc_foreign_key
+            assert not cc_table_match
+            assert not ct_foreign_key
+            assert not ct_table_match
+            assert not tc_foreign_key
+            assert not tc_table_match
+            assert not tt_foreign_key
+
+            assert cc_max_dist == qq_max_dist
+            assert tt_max_dist == qq_max_dist
+
+            add_relation('xx_default')
+            self.relation_ids['qc_default'] = self.relation_ids['xx_default']
+            self.relation_ids['qt_default'] = self.relation_ids['xx_default']
+            self.relation_ids['cq_default'] = self.relation_ids['xx_default']
+            self.relation_ids['cc_default'] = self.relation_ids['xx_default']
+            self.relation_ids['ct_default'] = self.relation_ids['xx_default']
+            self.relation_ids['tq_default'] = self.relation_ids['xx_default']
+            self.relation_ids['tc_default'] = self.relation_ids['xx_default']
+            self.relation_ids['tt_default'] = self.relation_ids['xx_default']
+
+            if sc_link:
+                self.relation_ids['qcCEM'] = self.relation_ids['xx_default']
+                self.relation_ids['qcCPM'] = self.relation_ids['xx_default']
+                self.relation_ids['qtTEM'] = self.relation_ids['xx_default']
+                self.relation_ids['qtTPM'] = self.relation_ids['xx_default']
+                self.relation_ids['cqCEM'] = self.relation_ids['xx_default']
+                self.relation_ids['cqCPM'] = self.relation_ids['xx_default']
+                self.relation_ids['tqTEM'] = self.relation_ids['xx_default']
+                self.relation_ids['tqTPM'] = self.relation_ids['xx_default']
+            if cv_link:
+                self.relation_ids["qcNUMBER"] = self.relation_ids['xx_default']
+                self.relation_ids["cqNUMBER"] = self.relation_ids['xx_default']
+                self.relation_ids["qcTIME"] = self.relation_ids['xx_default']
+                self.relation_ids["cqTIME"] = self.relation_ids['xx_default']
+                self.relation_ids["qcCELLMATCH"] = self.relation_ids[
+                    'xx_default']
+                self.relation_ids["cqCELLMATCH"] = self.relation_ids[
+                    'xx_default']
+
+            for i in range(-qq_max_dist, qq_max_dist + 1):
+                self.relation_ids['cc_dist', i] = self.relation_ids['qq_dist',
+                                                                    i]
+                self.relation_ids['tt_dist', i] = self.relation_ids['tt_dist',
+                                                                    i]
+
+        print("relations num is: %d", len(self.relation_ids))
+
+    def __len__(self):
+        """size of relations
+        Returns: int
+        """
+        return len(self.relation_ids)
+
+
+RELATIONS = Relations()
+
+
+def normal_build_relation_matrix(other_links, total_length, q_length, c_length,
+                          c_boundaries, t_boundaries, db):
+    """build relation matrix
+    """
+    sc_link = other_links.get('sc_link', {'q_col_match': {}, 'q_tab_match': {}})
+    cv_link = other_links.get('cv_link',
+                              {'num_date_match': {},
+                               'cell_match': {}})
+
+    # Catalogue which things are where
+    loc_types = {}
+    for i in range(q_length):
+        loc_types[i] = ('question', )
+
+    c_base = q_length
+    for c_id, (c_start,
+               c_end) in enumerate(zip(c_boundaries, c_boundaries[1:])):
+        for i in range(c_start + c_base, c_end + c_base):
+            loc_types[i] = ('column', c_id)
+    t_base = q_length + c_length
+    for t_id, (t_start,
+               t_end) in enumerate(zip(t_boundaries, t_boundaries[1:])):
+        for i in range(t_start + t_base, t_end + t_base):
+            loc_types[i] = ('table', t_id)
+
+    relations = np.zeros((total_length, total_length), dtype=np.int64)
+    for i, j in itertools.product(range(total_length), repeat=2):
+
+        def _set_relation(name):
+            """set relation for position (i, j)"""
+            relations[i, j] = RELATIONS.relation_ids[name]
+
+        def _get_qc_links(q_id, c_id):
+            """get link relation of q and col"""
+            coord = "%d,%d" % (q_id, c_id)
+            if coord in sc_link["q_col_match"]:
+                return sc_link["q_col_match"][coord]
+            elif coord in cv_link["cell_match"]:
+                return cv_link["cell_match"][coord]
+            elif coord in cv_link["num_date_match"]:
+                return cv_link["num_date_match"][coord]
+            return '_default'
+
+        def _get_qt_links(q_id, c_id):
+            """get link relation of q and tab"""
+            coord = "%d,%d" % (q_id, c_id)
+            if coord in sc_link["q_tab_match"]:
+                return sc_link["q_tab_match"][coord]
+            else:
+                return '_default'
+
+        try:
+            i_type, j_type = loc_types[i], loc_types[j]
+        except Exception as e:
+            print(f'loc_types: {loc_types}. c_boundaries: {c_boundaries}.' + \
+                          f'i, j, total_length and q_length: {i}, {j}, {total_length}, {q_length}')
+            raise e
+
+        if i_type[0] == 'question':
+            ################ relation of question-to-* ####################
+            if j_type[0] == 'question':  # relation qq
+                _set_relation(('qq_dist', clamp(j - i, RELATIONS.qq_max_dist)))
+            elif j_type[0] == 'column':  # relation qc
+                j_real = j_type[1]
+                rel = _get_qc_links(i, j_real)
+                _set_relation('qc' + rel)
+            elif j_type[0] == 'table':  # relation qt
+                j_real = j_type[1]
+                rel = _get_qt_links(i, j_real)
+                _set_relation('qt' + rel)
+        elif i_type[0] == 'column':
+            ################ relation of column-to-* ####################
+            if j_type[0] == 'question':  ## relation cq
+                i_real = i_type[1]
+                rel = _get_qc_links(j, i_real)
+                _set_relation('cq' + rel)
+            elif j_type[0] == 'column':  ## relation cc
+                col1, col2 = i_type[1], j_type[1]
+                if col1 == col2:
+                    _set_relation(
+                        ('cc_dist', clamp(j - i, RELATIONS.cc_max_dist)))
+                else:
+                    _set_relation('cc_default')
+                    # TODO: foreign keys and table match
+                    if RELATIONS.cc_foreign_key:
+                        if _foreign_key_id(db, col1) == col2:
+                            _set_relation('cc_foreign_key_forward')
+                        if _foreign_key_id(db, col2) == col1:
+                            _set_relation('cc_foreign_key_backward')
+                    if (RELATIONS.cc_table_match and
+                            _table_id(db, col1) == _table_id(db, col2)):
+                        _set_relation('cc_table_match')
+            elif j_type[0] == 'table':  ## relation ct
+                col, table = i_type[1], j_type[1]
+                _set_relation('ct_default')
+                if RELATIONS.ct_foreign_key and _match_foreign_key(db, col,
+                                                                   table):
+                    _set_relation('ct_foreign_key')
+                if RELATIONS.ct_table_match:
+                    col_table = _table_id(db, col)
+                    if col_table == table:
+                        if col in db.columns[col].table.primary_keys_id:
+                            _set_relation('ct_primary_key')
+                        else:
+                            _set_relation('ct_table_match')
+                    elif col_table is None:
+                        _set_relation('ct_any_table')
+        elif i_type[0] == 'table':
+            ################ relation of table-to-* ####################
+            if j_type[0] == 'question':
+                i_real = i_type[1]
+                rel = _get_qt_links(j, i_real)
+                _set_relation('tq' + rel)
+            elif j_type[0] == 'column':
+                table, col = i_type[1], j_type[1]
+                _set_relation('tc_default')
+
+                if RELATIONS.tc_foreign_key and _match_foreign_key(db, col,
+                                                                   table):
+                    _set_relation('tc_foreign_key')
+                if RELATIONS.tc_table_match:
+                    col_table = _table_id(db, col)
+                    if col_table == table:
+                        if col in db.columns[col].table.primary_keys_id:
+                            _set_relation('tc_primary_key')
+                        else:
+                            _set_relation('tc_table_match')
+                    elif col_table is None:
+                        _set_relation('tc_any_table')
+            elif j_type[0] == 'table':
+                table1, table2 = i_type[1], j_type[1]
+                if table1 == table2:
+                    _set_relation(
+                        ('tt_dist', clamp(j - i, RELATIONS.tt_max_dist)))
+                else:
+                    _set_relation('tt_default')
+                    if RELATIONS.tt_foreign_key:
+                        forward = table2 in db.tables[
+                            table1].foreign_key_tables
+                        backward = table1 in db.tables[
+                            table2].foreign_key_tables
+                        if forward and backward:
+                            _set_relation('tt_foreign_key_both')
+                        elif forward:
+                            _set_relation('tt_foreign_key_forward')
+                        elif backward:
+                            _set_relation('tt_foreign_key_backward')
+
+    return relations
+
 
 def _table_id(db, col):
     if col == 0:
@@ -311,7 +634,7 @@ def _table_id(db, col):
 
 
 def _foreign_key_id(db, col):
-    foreign_col = db.columns[col].foreign_key_for
+    foreign_col = db.columns[col].foreign_key
     if foreign_col is None:
         return None
     return foreign_col.id
@@ -376,15 +699,20 @@ def build_relation_matrix(cell_links, schema_links, tokens):
     for r in range(schema_links['q_col_match'].shape[0]):
         for c in range(schema_links['q_col_match'].shape[1]):
             match_type = schema_links['q_col_match'][r, c]
-            if match_type in {'question-column-exactmatch', 'question-column-partialmatch'}:
+            if match_type == 'question-column-partialmatch':
                 relation_matrix[r, r * n_col + c] = 1
+            elif match_type == 'question-column-exactmatch':
+                relation_matrix[r, r * n_col + c] = 2
 
     for r in range(schema_links['q_tab_match'].shape[0]):
         for c in range(schema_links['q_tab_match'].shape[1]):
             match_type = schema_links['q_tab_match'][r, c]
-            if match_type in {'question-table-exactmatch', 'question-table-partialmatch'}:
+            if match_type == 'question-column-partialmatch':
                 for col_idx in range(n_col):
                     relation_matrix[r, r * n_col + col_idx] = 1
+            elif match_type == 'question-table-exactmatch':
+                for col_idx in range(n_col):
+                    relation_matrix[r, r * n_col + col_idx] = 2
 
     return relation_matrix
 
@@ -392,7 +720,7 @@ def build_relation_matrix(cell_links, schema_links, tokens):
 if __name__ == '__main__':
 
     from settings import DATASETS_PATH
-    from dataproc import utils
+    from dataproc import spider_dataset
     from pathlib import Path
 
     train_ds = datasets.load_dataset(path="../dataproc/loaders/spider.py", cache_dir=DATASETS_PATH, split='train')
@@ -410,5 +738,16 @@ if __name__ == '__main__':
         rasat_cell = rasat_cell_linking(question_toks, db)
         normal_cell = compute_cell_value_linking(question_toks, db)
         relation_matrix = build_relation_matrix(rasat_cell, rasat_schema, question_toks)
+        link_info_dict = {
+            'sc_link': normal_schema,
+            'cv_link': normal_cell
+        }
+        q_len = len(question_toks)
+        c_len = len(db.columns)
+        t_len = len(db.tables)
+        total_len = q_len + c_len + t_len
+        normal_matrix = normal_build_relation_matrix(
+            link_info_dict, total_len, q_len, c_len,
+            list(range(c_len + 1)), list(range(t_len + 1)), db)
 
 

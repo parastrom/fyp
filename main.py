@@ -2,7 +2,7 @@ import datasets
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
-from dataproc import utils as dutils
+from dataproc import spider_dataset as dutils
 
 from settings import DATASETS_PATH
 

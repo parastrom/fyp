@@ -233,8 +233,8 @@ class SpiderExample(object):
         return lst_result
 
     def _compute_relations(self):
-        schema_links = self._linking_wrapper(linking.rasat_schema_linking)
-        cell_value_links = self._linking_wrapper(linking.rasat_cell_linking)
+        schema_links = self._linking_wrapper(linking.compute_schema_linking())
+        cell_value_links = self._linking_wrapper(linking.compute_cell_value_linking())
         link_info_dict = {
             'sc_link': schema_links,
             'cv_link': cell_value_links,

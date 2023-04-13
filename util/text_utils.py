@@ -12,5 +12,5 @@ def wordseg_and_extract_nums(question):
             candi_nums.append(token)
             candi_nums_index.append(idx)
 
-    return tokens, candi_nums_index, candi_nums_index
+    return tokens, candi_nums, candi_nums_index
 

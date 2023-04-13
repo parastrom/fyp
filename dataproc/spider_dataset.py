@@ -203,7 +203,7 @@ class SpiderExample(object):
         self.tables = db.tables
         self.db = db
 
-        self.column_match_cells = self._filter_match_value(json_example['match_values'])
+        self.column_match_cells = self._filter_match_values(json_example['match_values'])
 
         ernie_inputs = input_encoder.encode(self.question, db,
                                             self.column_match_cells)
@@ -233,26 +233,29 @@ class SpiderExample(object):
         return lst_result
 
     def _compute_relations(self):
-        schema_links = self._linking_wrapper(linking.compute_schema_linking())
-        cell_value_links = self._linking_wrapper(linking.compute_cell_value_linking())
-        link_info_dict = {
-            'sc_link': schema_links,
-            'cv_link': cell_value_links,
-        }
+        # schema_links = self._linking_wrapper(linking.rasat_schema_linking)
+        # cell_value_links = self._linking_wrapper(linking.rasat_cell_linking())
+        # link_info_dict = {
+        #     'sc_link': schema_links,
+        #     'cv_link': cell_value_links,
+        # }
+
+        schema_links, cell_links = self._linking_wrapper_v2(linking.rasat_schema_linking, linking.rasat_cell_linking)
 
         q_len = self.column_indexes[0] - 2
-        c_len = len(self.columns)
-        t_len = len(self.tables)
-        total_len = q_len + c_len + t_len
-        relation_matrix = linking.build_relation_matrix(
-            link_info_dict, total_len, q_len, c_len,
-            list(range(c_len + 1)), list(range(t_len + 1)), self.db)
+        # c_len = len(self.columns)
+        # t_len = len(self.tables)
+        # total_len = q_len + c_len + t_len
+        # relation_matrix = linking.normal_build_relation_matrix(
+        #     link_info_dict, total_len, q_len, c_len,
+        #     list(range(c_len + 1)), list(range(t_len + 1)), self.db)
+        relation_matrix = linking.new_build_relational_matrix(cell_links, schema_links, self.db, q_len)
         return relation_matrix
 
     def _linking_wrapper(self, fn_linking):
         """wrapper for linking function, do linking and id convert
         """
-        link_result = fn_linking(self.question, self.db)
+        link_result = fn_linking(self.question_tokens, self.db)
 
         # convert words id to BERT word pieces id
         new_result = {}
@@ -266,18 +269,51 @@ class SpiderExample(object):
             new_result[m_name] = new_match
         return new_result
 
+    def _linking_wrapper_v2(self, fn_schema_linking, fn_cell_linking):
+        """Wrapper for schema and cell linking functions."""
+
+        schema_link_res = fn_schema_linking(self.question, self.db)
+        cell_link_res = fn_cell_linking(self.question_tokens, self.db)
+
+        # Convert word id to BERT word pieces id
+        schema_result = dict()
+
+        for m_name, match_matrix in schema_link_res.items():
+            new_match = dict()
+            for qid, match_types in enumerate(match_matrix):
+                for col_tab_id, match_type in enumerate(match_types):
+                    if match_type != "question-table-nomatch" and match_type != "question-column-nomatch":
+                        for real_qid in self.token_mapping[qid]:
+                            new_match[f'{real_qid},{col_tab_id}'] = match_type
+            schema_result[m_name] = new_match
+
+        # Handle cell_linking results
+        cell_result = dict()
+
+        for m_name, matches in cell_link_res.items():
+            new_match = {}
+            for pos_str, match_type in matches.items():
+                qid_str, col_tab_id_str = pos_str.split(',')
+                qid, col_tab_id = int(qid_str), int(col_tab_id_str)
+                for real_qid in self.token_mapping[qid]:
+                    new_match[f'{real_qid},{col_tab_id}'] = match_type
+            cell_result[m_name] = new_match
+
+        return schema_result, cell_result
+
+
 
 
 class SpiderDataset(Dataset):
 
-    def __int__(self, name, db_file, data_file, input_encoder, label_encoder,
+    def __init__(self, name, input_encoder,
                 is_cached=False, schema_file=None, has_label=True):
 
         super(SpiderDataset, self).__init__()
 
         self.name = name
         self.input_encoder = input_encoder
-        self.label_encoder = label_encoder
+        # self.label_encoder = label_encoder
         self.db_schema_file = schema_file
         self.has_label = has_label
         self._qid2index = {}
@@ -286,8 +322,8 @@ class SpiderDataset(Dataset):
 
         self.db_dict = process(spider_data_dict['train'])
         self._examples = []
-        match_values_file = Path(spider_data_dict[0]['db_path']).parent / 'match_values.json'
-        train_spider_file = Path(spider_data_dict[0]['data_filepath'])
+        match_values_file = Path(spider_data_dict['train'][0]['db_path']).parent / 'match_values.json'
+        train_spider_file = Path(spider_data_dict['train'][0]['data_filepath'])
         if not match_values_file.exists():
             raise FileNotFoundError("match value file not found : "+str(match_values_file))
         with open(match_values_file) as mval_file, open(train_spider_file) as data_file:
@@ -311,10 +347,16 @@ class SpiderDataset(Dataset):
             inputs = SpiderExample(item, db, self.input_encoder)
             if 'sql' not in item or not isinstance(item['sql'], dict) or not self.has_label:
                 outputs = None
-            else:
-                outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
+            # else:
+                    # outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
             self._qid2index[item['question_id']] = len(self._examples)
             self._examples.append([inputs, outputs])
 
 
+if __name__ == '__main__':
 
+    from bert_encoder import BertInputEncoder
+    from global_config import get_config
+    config = get_config()
+    model_config = BertInputEncoder(model_config=config.model)
+    spider_ds = SpiderDataset('spider', model_config)

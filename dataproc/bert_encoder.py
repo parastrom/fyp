@@ -38,6 +38,11 @@ class BertInputEncoder(object):
         }
         self._need_bool_value = True if self.config.grammar_type != 'nl2sql' else False
 
+    def check(self, data, db):
+        if len(db.columns) > self.config.max_column_num or len(db.tables) > self.config.max_table_num:
+            return False
+        return True
+
     def encode(self,
                question,
                db,
@@ -86,7 +91,8 @@ class BertInputEncoder(object):
         """
 
         if col_orders is None:
-            col_orders = np.array(len(db.columns))
+            col_orders = np.arange(len(db.columns))
+
         if isinstance(question, str):
             q_tokens_tmp = self.tokenizer.tokenize(question)
             token_idx_mapping = [[i] for i in range(len(q_tokens_tmp))]
@@ -122,7 +128,7 @@ class BertInputEncoder(object):
                     idx > 1 and column.table.id != columns[idx - 1].table.id:
                 table_indexes.append(len(final_tokens))
                 final_tokens.append(self.special_token_dict['table'])
-                final_tokens += self.tokenizer.tokenize(self.tokenizer.tokenize(column.table.orig_name))
+                final_tokens += self.tokenizer.tokenize(column.table.orig_name)
 
             if idx == 0:
                 col_name = 'any column'

@@ -717,6 +717,67 @@ def build_relation_matrix(cell_links, schema_links, tokens):
     return relation_matrix
 
 
+def new_build_relational_matrix(cell_links, schema_links, db, n_tok):
+    c_len = len(db.columns)
+    t_len = len(db.tables)
+    total_len = n_tok + c_len + t_len
+    n_row, n_col = len(schema_links['q_col_match']), len(schema_links['q_col_match'][0])
+    relation_matrix = np.zeros((n_tok, n_row * n_col), dtype=np.int64)
+
+    # Helper functions
+    def _table_id(col_id):
+        return db.columns[col_id].table_id
+
+    def _foreign_key_id(col_id):
+        return db.columns[col_id].foreign_key_for
+
+    def _match_foreign_key(col_id, table_id):
+        foreign_key = _foreign_key_id(col_id)
+        return foreign_key is not None and foreign_key == table_id
+
+    # For cell linking
+    for r, c in cell_links['q_val_match']:
+        relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcCELLMATCH']
+
+    for r, c in cell_links['num_date_match']:
+        relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcNUMBER']
+
+    for r in range(schema_links['q_col_match'].shape[0]):
+        for c in range(schema_links['q_col_match'].shape[1]):
+            match_type = schema_links['q_col_match'][r, c]
+            if match_type == 'question-column-partialmatch':
+                relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcCPM']
+            elif match_type == 'question-column-exactmatch':
+                relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcCEM']
+
+    for r in range(schema_links['q_tab_match'].shape[0]):
+        for c in range(schema_links['q_tab_match'].shape[1]):
+            match_type = schema_links['q_tab_match'][r, c]
+            if match_type == 'question-column-partialmatch':
+                for col_idx in range(n_col):
+                    relation_matrix[r, r * n_col + col_idx] = RELATIONS.relation_ids['qtTPM']
+            elif match_type == 'question-table-exactmatch':
+                for col_idx in range(n_col):
+                    relation_matrix[r, r * n_col + col_idx] = RELATIONS.relation_ids['qtTEM']
+
+    # Consider foreign keys and table matches
+    for r in range(n_tok):
+        for c in range(n_col):
+            col_id = r * n_col + c
+            if schema_links['q_col_match'][r, c] in ('question-column-partialmatch', 'question-column-exactmatch'):
+                table_id = _table_id(col_id)
+                for idx, table_id in enumerate(db.table_ids):
+                    if table_id != _table_id(col_id):
+                        if _match_foreign_key(col_id, table_id):
+                            relation_matrix[r, r * n_col + idx] = RELATIONS.relation_ids['cc_foreign_key_forward']
+                        elif _match_foreign_key(idx, table_id):
+                            relation_matrix[r, r * n_col + idx] = RELATIONS.relation_ids['cc_foreign_key_backward']
+                    else:
+                        relation_matrix[r, r * n_col + idx] = RELATIONS.relation_ids['cc_table_match']
+
+    return relation_matrix
+
+
 if __name__ == '__main__':
 
     from settings import DATASETS_PATH
@@ -725,7 +786,7 @@ if __name__ == '__main__':
 
     train_ds = datasets.load_dataset(path="../dataproc/loaders/spider.py", cache_dir=DATASETS_PATH, split='train')
     train_spider_file = Path(train_ds[0]['data_filepath'])
-    dbs = utils.process(train_ds)
+    dbs = spider_dataset.process(train_ds)
     with open(train_spider_file) as data_file:
         spider_json = json.load(data_file)
 

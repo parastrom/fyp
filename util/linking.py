@@ -90,6 +90,7 @@ def rasat_schema_linking(question: str, db):
 
     # relations between questions and tables
     q_tab_mat = np.array([['question-table-nomatch'] * t_num for _ in range(q_num)], dtype='<U100')
+    tab_q_mat = np.array([['table-question-nomatch'] * q_num for _ in range(t_num)], dtype='<U100')
     max_len = max([len(t) for t in table_toks])
     index_pairs = list(filter(lambda x: x[1] - x[0] <= max_len, combinations(range(q_num + 1), 2)))
     index_pairs = sorted(index_pairs, key=lambda x: x[1] - x[0])
@@ -98,11 +99,14 @@ def rasat_schema_linking(question: str, db):
         for idx, name in enumerate(table_names):
             if phrase == name:
                 q_tab_mat[range(i, j), idx] = 'question-table-exactmatch'
+                tab_q_mat[idx, range(i, j)] = 'table-question-exactmatch'
             elif (j - i == 1 and phrase in name.split()) or (j - i > 1 and phrase in name):
                 q_tab_mat[range(i, j), idx] = 'question-table-partialmatch'
+                tab_q_mat[idx, range(i, j)] = 'table-question-partialmatch'
 
     # relations between questions and columns
     q_col_mat = np.array([['question-column-nomatch'] * c_num for _ in range(q_num)], dtype='<U100')
+    col_q_mat = np.array([['column-question-nomatch'] * q_num for _ in range(c_num)], dtype='<U100')
     max_len = max([len(c) for c in column_toks if isinstance(c, list)])
     index_pairs = list(filter(lambda x: x[1] - x[0] <= max_len, combinations(range(q_num + 1), 2)))
     index_pairs = sorted(index_pairs, key=lambda x: x[1] - x[0])
@@ -112,10 +116,12 @@ def rasat_schema_linking(question: str, db):
             if name is not None:
                 if phrase == name:
                     q_col_mat[range(i, j), idx] = 'question-column-exactmatch'
+                    col_q_mat[idx, range(i, j)] = 'column-question-exactmatch'
                 elif (j - i == 1 and phrase in name.split()) or (j - i > 1 and phrase in name):
                     q_col_mat[range(i, j), idx] = 'question-column-partialmatch'
+                    col_q_mat[idx, range(i, j)] = 'column-question-partialmatch'
 
-    return {"q_col_match": q_col_mat, "q_tab_match": q_tab_mat}
+    return {"q_col_match": q_col_mat, "q_tab_match": q_tab_mat, "col_q_match": col_q_mat, "tab_q_match": tab_q_mat}
 
 
 def rasat_cell_linking(tokens, db):
@@ -721,59 +727,131 @@ def new_build_relational_matrix(cell_links, schema_links, db, n_tok):
     c_len = len(db.columns)
     t_len = len(db.tables)
     total_len = n_tok + c_len + t_len
-    n_row, n_col = len(schema_links['q_col_match']), len(schema_links['q_col_match'][0])
-    relation_matrix = np.zeros((n_tok, n_row * n_col), dtype=np.int64)
+    relation_matrix = np.zeros((total_len, total_len), dtype=np.int64)
 
     # Helper functions
     def _table_id(col_id):
-        return db.columns[col_id].table_id
+        if db.columns[col_id].table:
+            return db.columns[col_id].table.id
+        else:
+            return None
 
     def _foreign_key_id(col_id):
-        return db.columns[col_id].foreign_key_for
+        return db.columns[col_id].foreign_key
 
     def _match_foreign_key(col_id, table_id):
         foreign_key = _foreign_key_id(col_id)
         return foreign_key is not None and foreign_key == table_id
 
-    # For cell linking
-    for r, c in cell_links['q_val_match']:
-        relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcCELLMATCH']
 
-    for r, c in cell_links['num_date_match']:
-        relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcNUMBER']
+    def _get_type(idx):
+        if idx < n_tok:
+            return ('question', idx)
+        elif n_tok <= idx < n_tok + c_len:
+            return ('column', idx - n_tok)
+        else:
+            return ('table', idx - n_tok - c_len)
 
-    for r in range(schema_links['q_col_match'].shape[0]):
-        for c in range(schema_links['q_col_match'].shape[1]):
-            match_type = schema_links['q_col_match'][r, c]
-            if match_type == 'question-column-partialmatch':
-                relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcCPM']
-            elif match_type == 'question-column-exactmatch':
-                relation_matrix[r, r * n_col + c] = RELATIONS.relation_ids['qcCEM']
+    def clamp(value, abs_max):
+        """clamp value"""
+        value = max(-abs_max, value)
+        value = min(abs_max, value)
+        return value
 
-    for r in range(schema_links['q_tab_match'].shape[0]):
-        for c in range(schema_links['q_tab_match'].shape[1]):
-            match_type = schema_links['q_tab_match'][r, c]
-            if match_type == 'question-column-partialmatch':
-                for col_idx in range(n_col):
-                    relation_matrix[r, r * n_col + col_idx] = RELATIONS.relation_ids['qtTPM']
-            elif match_type == 'question-table-exactmatch':
-                for col_idx in range(n_col):
-                    relation_matrix[r, r * n_col + col_idx] = RELATIONS.relation_ids['qtTEM']
+    # Process cell_links and schema_links
+    for key, value in cell_links['q_val_match'].items():
+        r, c = map(int, key.split(','))
+        relation_matrix[r, n_tok + c] = RELATIONS.relation_ids['qcCELLMATCH']
 
-    # Consider foreign keys and table matches
-    for r in range(n_tok):
-        for c in range(n_col):
-            col_id = r * n_col + c
-            if schema_links['q_col_match'][r, c] in ('question-column-partialmatch', 'question-column-exactmatch'):
-                table_id = _table_id(col_id)
-                for idx, table_id in enumerate(db.table_ids):
-                    if table_id != _table_id(col_id):
-                        if _match_foreign_key(col_id, table_id):
-                            relation_matrix[r, r * n_col + idx] = RELATIONS.relation_ids['cc_foreign_key_forward']
-                        elif _match_foreign_key(idx, table_id):
-                            relation_matrix[r, r * n_col + idx] = RELATIONS.relation_ids['cc_foreign_key_backward']
-                    else:
-                        relation_matrix[r, r * n_col + idx] = RELATIONS.relation_ids['cc_table_match']
+    for key, value in cell_links['num_date_match'].items():
+        r, c = map(int, key.split(','))
+        relation_matrix[r, n_tok + c] = RELATIONS.relation_ids['qcNUMBER']
+
+    for key, value in schema_links['q_col_match'].items():
+        r, c = map(int, key.split(','))
+        if value == 'question-column-partialmatch':
+            relation_matrix[r, n_tok + c] = RELATIONS.relation_ids['qcCPM']
+        elif value == 'question-column-exactmatch':
+            relation_matrix[r, n_tok + c] = RELATIONS.relation_ids['qcCEM']
+
+    for key, value in schema_links['q_tab_match'].items():
+        r, c = map(int, key.split(','))
+        if value == 'question-column-partialmatch':
+            for col_idx in range(c_len):
+                relation_matrix[r, n_tok + col_idx] = RELATIONS.relation_ids['qtTPM']
+        elif value == 'question-table-exactmatch':
+            for col_idx in range(c_len):
+                relation_matrix[r, n_tok + col_idx] = RELATIONS.relation_ids['qtTEM']
+
+    # Capture schema-schema relations
+    for i in range(n_tok, total_len):
+        i_type = _get_type(i)
+        for j in range(n_tok, total_len):
+            j_type = _get_type(j)
+
+            if i_type[0] == 'column' and j_type[0] == 'column':
+                col1, col2 = i_type[1], j_type[1]
+                if col1 == col2:
+                    relation_matrix[i, j] = RELATIONS.relation_ids['cc_default']
+                else:
+                    if _foreign_key_id(col1) == col2:
+                        relation_matrix[i, j] = RELATIONS.relation_ids['cc_foreign_key_forward']
+                    if _foreign_key_id(col2) == col1:
+                        relation_matrix[i, j] = RELATIONS.relation_ids['cc_foreign_key_backward']
+                    if _table_id(col1) == _table_id(col2):
+                        relation_matrix[i, j] = RELATIONS.relation_ids['cc_table_match']
+
+            elif i_type[0] == 'column' and j_type[0] == 'table':
+                col, table = i_type[1], j_type[1]
+                if _match_foreign_key(col, table):
+                    relation_matrix[i, j] = RELATIONS.relation_ids['ct_foreign_key']
+                if _table_id(col) == table:
+                    relation_matrix[i, j] = RELATIONS.relation_ids['ct_table_match']
+
+            elif i_type[0] == 'table' and j_type[0] == 'column':
+                table, col = i_type[1], j_type[1]
+                if _match_foreign_key(col, table):
+                    relation_matrix[i, j] = RELATIONS.relation_ids['tc_foreign_key']
+                if _table_id(col) == table:
+                    relation_matrix[i, j] = RELATIONS.relation_ids['tc_table_match']
+
+            elif i_type[0] == 'table' and j_type[0] == 'table':
+                table1, table2 = i_type[1], j_type[1]
+                if table1 == table2:
+                    relation_matrix[i, j] = RELATIONS.relation_ids['tt_default']
+                else:
+                    if table2 in db.tables[table1].foreign_key_tables:
+                        relation_matrix[i, j] = RELATIONS.relation_ids['tt_foreign_key_forward']
+                    if table1 in db.tables[table2].foreign_key_tables:
+                        relation_matrix[i, j] = RELATIONS.relation_ids['tt_foreign_key_backward']
+
+    # Capture question-question relations
+    for i in range(n_tok):
+        i_type = _get_type(i)
+        for j in range(n_tok):
+            j_type = _get_type(j)
+
+            if i_type[0] == 'question' and j_type[0] == 'question':
+                relation_matrix[i, j] = RELATIONS.relation_ids['qq_dist', clamp(j - i, RELATIONS.qq_max_dist)]
+
+    # Capture schema-question relations
+    for key, value in schema_links['col_q_match'].items():
+        c, r = map(int, key.split(','))
+        if value == 'column-question-partialmatch':
+            relation_matrix[n_tok + c, r] = RELATIONS.relation_ids['cqCPM']
+        elif value == 'column-question-exactmatch':
+            relation_matrix[n_tok + c, r] = RELATIONS.relation_ids['cqCEM']
+
+    for key, value in schema_links['tab_q_match'].items():
+        t, r = map(int, key.split(','))
+        if value == 'table-question-partialmatch':
+            for col_idx in range(c_len):
+                if db.columns[col_idx].table and db.columns[col_idx].table.id == t:
+                    relation_matrix[n_tok + col_idx, r] = RELATIONS.relation_ids['tqTPM']
+        elif value == 'table-question-exactmatch':
+            for col_idx in range(c_len):
+                if db.columns[col_idx].table and db.columns[col_idx].table.id == t:
+                    relation_matrix[n_tok + col_idx, r] = RELATIONS.relation_ids['tqTEM']
 
     return relation_matrix
 

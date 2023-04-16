@@ -233,8 +233,8 @@ class SpiderExample(object):
         return lst_result
 
     def _compute_relations(self):
-        # schema_links = self._linking_wrapper(linking.rasat_schema_linking)
-        # cell_value_links = self._linking_wrapper(linking.rasat_cell_linking())
+        # schema_links = self._linking_wrapper(linking.compute_schema_linking)
+        # cell_value_links = self._linking_wrapper(linking.compute_cell_value_linking)
         # link_info_dict = {
         #     'sc_link': schema_links,
         #     'cv_link': cell_value_links,
@@ -278,13 +278,23 @@ class SpiderExample(object):
         # Convert word id to BERT word pieces id
         schema_result = dict()
 
-        for m_name, match_matrix in schema_link_res.items():
+        for m_name in ["q_col_match", "q_tab_match", "col_q_match", "tab_q_match"]:
+            match_matrix = schema_link_res[m_name]
             new_match = dict()
-            for qid, match_types in enumerate(match_matrix):
-                for col_tab_id, match_type in enumerate(match_types):
-                    if match_type != "question-table-nomatch" and match_type != "question-column-nomatch":
-                        for real_qid in self.token_mapping[qid]:
-                            new_match[f'{real_qid},{col_tab_id}'] = match_type
+
+            if m_name in ["q_col_match", "q_tab_match"]:
+                for qid, match_types in enumerate(match_matrix):
+                    for col_tab_id, match_type in enumerate(match_types):
+                        if match_type != "question-table-nomatch" and match_type != "question-column-nomatch":
+                            for real_qid in self.token_mapping[qid]:
+                                new_match[f'{real_qid},{col_tab_id}'] = match_type
+            else:  # "col_q_match" and "tab_q_match"
+                for col_tab_id, match_types in enumerate(match_matrix):
+                    for qid, match_type in enumerate(match_types):
+                        if match_type != "table-question-nomatch" and match_type != "column-question-nomatch":
+                            for real_qid in self.token_mapping[qid]:
+                                new_match[f'{real_qid},{col_tab_id}'] = match_type
+
             schema_result[m_name] = new_match
 
         # Handle cell_linking results

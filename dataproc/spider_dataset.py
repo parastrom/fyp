@@ -1,6 +1,7 @@
 import json
 import logging
 import os.path
+import pickle
 
 import attr
 import re
@@ -14,6 +15,9 @@ from settings import DATASETS_PATH
 from pathlib import Path
 from tqdm import tqdm
 from util import linking
+import multiprocessing
+from functools import partial
+import concurrent.futures
 
 
 g_match_score_threshold = 0.3
@@ -278,22 +282,25 @@ class SpiderExample(object):
         # Convert word id to BERT word pieces id
         schema_result = dict()
 
+        reverse_token_mapping = {qid: sublist for sublist in self.token_mapping for qid in sublist}
+
         for m_name in ["q_col_match", "q_tab_match", "col_q_match", "tab_q_match"]:
             match_matrix = schema_link_res[m_name]
             new_match = dict()
-
             if m_name in ["q_col_match", "q_tab_match"]:
                 for qid, match_types in enumerate(match_matrix):
                     for col_tab_id, match_type in enumerate(match_types):
                         if match_type != "question-table-nomatch" and match_type != "question-column-nomatch":
-                            for real_qid in self.token_mapping[qid]:
-                                new_match[f'{real_qid},{col_tab_id}'] = match_type
+                            if qid in reverse_token_mapping:
+                                for real_qid in reverse_token_mapping[qid]:
+                                    new_match[f'{real_qid},{col_tab_id}'] = match_type
             else:  # "col_q_match" and "tab_q_match"
                 for col_tab_id, match_types in enumerate(match_matrix):
                     for qid, match_type in enumerate(match_types):
                         if match_type != "table-question-nomatch" and match_type != "column-question-nomatch":
-                            for real_qid in self.token_mapping[qid]:
-                                new_match[f'{real_qid},{col_tab_id}'] = match_type
+                            if qid in reverse_token_mapping:
+                                for real_qid in reverse_token_mapping[qid]:
+                                    new_match[f'{col_tab_id},{real_qid}'] = match_type
 
             schema_result[m_name] = new_match
 
@@ -305,8 +312,9 @@ class SpiderExample(object):
             for pos_str, match_type in matches.items():
                 qid_str, col_tab_id_str = pos_str.split(',')
                 qid, col_tab_id = int(qid_str), int(col_tab_id_str)
-                for real_qid in self.token_mapping[qid]:
-                    new_match[f'{real_qid},{col_tab_id}'] = match_type
+                if qid in reverse_token_mapping:
+                    for real_qid in reverse_token_mapping[qid]:
+                        new_match[f'{real_qid},{col_tab_id}'] = match_type
             cell_result[m_name] = new_match
 
         return schema_result, cell_result
@@ -316,14 +324,14 @@ class SpiderExample(object):
 
 class SpiderDataset(Dataset):
 
-    def __init__(self, name, input_encoder,
+    def __init__(self, name, input_encoder, label_encoder,
                 is_cached=False, schema_file=None, has_label=True):
 
         super(SpiderDataset, self).__init__()
 
         self.name = name
         self.input_encoder = input_encoder
-        # self.label_encoder = label_encoder
+        self.label_encoder = label_encoder
         self.db_schema_file = schema_file
         self.has_label = has_label
         self._qid2index = {}
@@ -339,34 +347,137 @@ class SpiderDataset(Dataset):
         with open(match_values_file) as mval_file, open(train_spider_file) as data_file:
             self.collate_examples(json.load(data_file), json.load(mval_file))
 
-    def collate_examples(self, spider_json: List[dict], match_values: List[dict]):
+    # def process_single_example(self, item, m_val, idx):
+    #     db = self.db_dict[item['db_id']]
+    #
+    #     if not self.input_encoder.check(item, db):
+    #         logging.warning(
+    #             f'check failed: db_id={item["db_id"]}, question = {item["question"]}'
+    #         )
+    #         return None
+    #
+    #     if 'question_id' not in item:
+    #         item['question_id'] = f'qid{idx:06d}'
+    #         item['match_values'] = m_val["match_values"]
+    #
+    #     inputs = SpiderExample(item, db, self.input_encoder)
+    #     if 'sql' not in item or not isinstance(item['sql'], dict) or not self.has_label:
+    #         outputs = None
+    #     else:
+    #         outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
+    #
+    #     return (item['question_id'], inputs, outputs)
 
-        for idx, (item, m_val) in tqdm(enumerate(zip(spider_json, match_values))):
-            db = self.db_dict[item['db_id']]
+    # def collate_examples(self, spider_json: List[dict], match_values: List[dict]):
+    #
+    #     for idx, (item, m_val) in tqdm(enumerate(zip(spider_json, match_values))):
+    #         db = self.db_dict[item['db_id']]
+    #
+    #         if not self.input_encoder.check(item, db):
+    #             logging.warning(
+    #                 f'check failed: db_id={item["db_id"]}, question = {item["question"]}'
+    #             )
+    #             continue
+    #
+    #         if 'question_id' not in item:
+    #             item['question_id'] = f'qid{idx:06d}'
+    #             item['match_values'] = m_val["match_values"]
+    #
+    #         inputs = SpiderExample(item, db, self.input_encoder)
+    #         if 'sql' not in item or not isinstance(item['sql'], dict) or not self.has_label:
+    #             outputs = None
+    #         else:
+    #             outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
+    #         self._qid2index[item['question_id']] = len(self._examples)
+    #         self._examples.append([inputs, outputs])
 
-            if not self.input_encoder.check(item, db):
-                logging.warning(
-                    f'check failed: db_id={item["db_id"]}, question = {item["question"]}'
-                )
-                continue
+    def collate_examples(self, spider_json: List[dict], match_values: List[dict], batch_size: int = 32):
+        num_processes = max(1, multiprocessing.cpu_count() // 2)
 
-            if 'question_id' not in item:
-                item['question_id'] = f'qid{idx:06d}'
-                item['match_values'] = m_val["match_values"]
+        def process_batch(batch_args):
+            with multiprocessing.Pool(num_processes) as pool:
+                processed_batch = []
+                total = len(batch_args)
+                with tqdm(total=total, desc="Processing examples") as pbar:
+                    for result in pool.imap_unordered(process_single_example, batch_args):
+                        processed_batch.append(result)
+                        pbar.update(1)
+                return processed_batch
 
-            inputs = SpiderExample(item, db, self.input_encoder)
-            if 'sql' not in item or not isinstance(item['sql'], dict) or not self.has_label:
-                outputs = None
-            # else:
-                    # outputs = self.label_encoder.add_item(self.name, item['sql'], inputs.values)
-            self._qid2index[item['question_id']] = len(self._examples)
-            self._examples.append([inputs, outputs])
+        args_list = [
+            (
+                item, m_val, idx,
+                self.db_dict, self.input_encoder, self.label_encoder,
+                self.name, self.has_label
+            )
+            for idx, (item, m_val) in enumerate(zip(spider_json, match_values))
+        ]
 
+        for i in range(0, len(args_list), batch_size):
+            batch_args = args_list[i:i + batch_size]
+            processed_batch = process_batch(batch_args)
+
+            for result in processed_batch:
+                if result is not None:
+                    qid, inputs, outputs = result
+                    self._qid2index[qid] = len(self._examples)
+                    self._examples.append([inputs, outputs])
+
+    def save(self, save_dir, save_db=True):
+        """save data to disk
+
+        Args:
+            save_dir (TYPE): NULL
+
+        Returns: TODO
+
+        Raises: NULL
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        if save_db:
+            with open(Path(save_dir) / 'db.pkl', 'wb') as ofs:
+                pickle.dump(self.db_dict, ofs)
+        with open(Path(save_dir) / f'{self.name}.pkl', 'wb') as ofs:
+            pickle.dump([self._examples, self._qid2index], ofs)
+
+def process_single_example(args):
+    item, m_val, idx, db_dict, input_encoder, label_encoder, name, has_label = args
+    db = db_dict[item['db_id']]
+
+    if not input_encoder.check(item, db):
+        logging.warning(
+            f'check failed: db_id={item["db_id"]}, question = {item["question"]}'
+        )
+        return None
+
+    if 'question_id' not in item:
+        item['question_id'] = f'qid{idx:06d}'
+        item['match_values'] = m_val["match_values"]
+
+    inputs = SpiderExample(item, db, input_encoder)
+    if 'sql' not in item or not isinstance(item['sql'], dict) or not has_label:
+        outputs = None
+    else:
+        outputs = label_encoder.add_item(name, item['sql'], inputs.values)
+
+    return (item['question_id'], inputs, outputs)
 
 if __name__ == '__main__':
 
     from bert_encoder import BertInputEncoder
     from global_config import get_config
+    from sql_preproc import SQLPreproc
+    from grammars.spider import SpiderLanguage
+    from settings import ROOT_DIR
+
+
     config = get_config()
     model_config = BertInputEncoder(model_config=config.model)
-    spider_ds = SpiderDataset('spider', model_config)
+    GrammarClass = SpiderLanguage
+
+    path = ROOT_DIR / Path("conf/spider.asdl")
+    label_encoder = SQLPreproc(path,
+                               SpiderLanguage,
+                               predict_value=config.model.predict_value,
+                               is_cached=False)
+    spider_ds = SpiderDataset('spider', model_config, label_encoder)

@@ -1,12 +1,12 @@
 {
      general: {
-        mode: null,
+        mode: 'train',
         batch_size: 32,
         use_cuda: true,
         is_cloud: false,
         is_debug: false,
         use_fp16: 0,
-        device: "cuda:2"
+        device: "cuda:0"
     },
     model: {
         pretrain_model_type: 'BERT',
@@ -29,10 +29,10 @@
         max_table_tokens: 20,   # useless
     },
     data: {
-        db: null,
-        grammar: 'conf/spider.asdl',
-        train_set: null,
-        dev_set: null,
+        db: 'conf/cache/test_db_file.pkl',
+        grammar: 'conf/label_vocabs',
+        train_set: 'conf/cache/train_data_file.pkl',
+        dev_set: 'conf/cache/validation_data_file.pkl',
         test_set: null,
         eval_file: null,
         output: 'output',

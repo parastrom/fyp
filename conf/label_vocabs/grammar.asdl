@@ -11,7 +11,6 @@ module Spider
     -- col_unit: (agg_id, col_id, isDistinct(bool))
     col_unit = (
       agg_type agg_id,
-      -- TODO fix
       column col_id
     )
 

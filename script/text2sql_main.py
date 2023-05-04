@@ -1,17 +1,3 @@
-#   Copyright (c) 2021 PaddlePaddle Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import sys
 import os
 import traceback
@@ -24,9 +10,11 @@ import random
 
 import numpy as np
 import torch
-from text2sql import models, dataproc, global_config, optim, launch
-from text2sql.grammars.spider import SpiderLanguage
-from text2sql.settings import ROOT_DIR
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src import models, process, global_config, optim, launch
+from src.grammar.spider import SpiderLanguage
+from src.settings import ROOT_DIR
 
 ModelClass = None
 GrammarClass = None
@@ -71,9 +59,6 @@ def update_label_encoder(train_set, label_encoder):
 
 def train(config):
     logging.info('training arguments: %s', config)
-    # if config.train.use_data_parallel:
-    #     logging.info("parallel mode. init env...")
-    #     dist.init_parallel_env()
 
     root_dir = Path(ROOT_DIR)
     dataset_config = {
@@ -107,11 +92,11 @@ def train(config):
     lr_scheduler, optimizer = optim.init_optimizer(model, config.train, max_train_steps)
 
     if config.model.init_model_optim is not None:
-        logging.info("loading model optim from %s", config.model.init_model_optim)
-        optimizer.set_state_dict(torch.load(config.model.init_model_optim))
-
+        model_opt_path = str(root_dir / config.model.init_model_optim)
+        logging.info("loading model optim from %s", model_opt_path)
+        optimizer.load_state_dict(torch.load(model_opt_path))
     logging.info("start of training...")
-    launch.trainer.train(config, model, (lr_scheduler, optimizer), config.train.epochs,
+    launch.train.train(config, model, (lr_scheduler, optimizer), config.train.epochs,
                          train_reader, dev_reader)
     logging.info("end of training...")
 
@@ -158,11 +143,11 @@ def evaluate(config):
         name='test', data_file=config.data.test_set, **dataset_config)
     with open(config.data.eval_file) as ifs:
         infer_results = list(ifs)
-    model = None
+    root_dir = Path(ROOT_DIR)
 
     logging.info("start of evaluating...")
     launch.eval.evaluate(
-        model, test_set, infer_results, eval_value=config.general.is_eval_value)
+         test_set, infer_results, root_dir / config.data.output)
     logging.info("end of evaluating....")
 
 
@@ -204,7 +189,7 @@ def init_env(config):
         raise ValueError('grammar type is not supported: %s' %
                          (config.model.grammar_type))
     root_dir = Path(ROOT_DIR)
-    g_label_encoder = dataproc.SQLPreproc(
+    g_label_encoder = process.SQLPreproc(
         str(root_dir / config.data.grammar), # Base path to conf/cache
         GrammarClass,
         predict_value=config.model.predict_value,
@@ -212,25 +197,12 @@ def init_env(config):
     print(f"")
 
     assert config.model.model_name == 'seq2tree_v2', 'only seq2tree_v2 is supported'
-    g_input_encoder = dataproc.BertInputEncoder(config.model)
+    g_input_encoder = process.BertInputEncoder(config.model)
     ModelClass = lambda x1, x2: models.EncDecModel(x1, x2, 'v2')
-    DatasetClass = dataproc.SpiderDataset
+    DatasetClass = process.SpiderDataset
     DataLoaderClass = partial(
-        dataproc.loaders.train_load.DataLoader,
-        collate_fn=dataproc.loaders.train_load.collate_batch_data_v2)
-
-
-def _set_proc_name(config, tag_base):
-    """
-    set process name on local machine
-    """
-    if config.general.is_cloud:
-        return
-    if tag_base.startswith('train'):
-        tag_base = 'train'
-    # import setproctitle
-    # setproctitle.setproctitle(tag_base + '_' + config.data.output.rstrip('/')
-    #                           .split('/')[-1])
+        process.loaders.train_load.DataLoader,
+        collate_fn=process.loaders.train_load.collate_batch_data_v2)
 
 
 if __name__ == "__main__":
@@ -238,11 +210,7 @@ if __name__ == "__main__":
     init_env(config)
 
     run_mode = config.general.mode
-    if run_mode == 'preproc':
-        preprocess(config)
-        sys.exit(0)
 
-    _set_proc_name(config, run_mode)
     if run_mode == 'test':
         evaluate(config)
     elif run_mode == 'infer':

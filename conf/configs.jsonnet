@@ -1,7 +1,7 @@
 {
      general: {
         mode: 'train',
-        batch_size: 32,
+        batch_size: 8,
         use_cuda: true,
         is_cloud: false,
         is_debug: false,
@@ -10,7 +10,7 @@
     },
     model: {
         pretrain_model_type: 'BERT',
-        pretrain_model: 'bert-large-uncased-whole-word-masking',
+        pretrain_model: 'bert-base-uncased',
         init_model_params: null,
         init_model_optim: null,
         model_name: 'seq2tree_v2',
@@ -42,8 +42,9 @@
         epochs: 30,
         log_steps: 10,
         trainer_num: 1,
+        grad_accumulation_steps: 4,
         # [begin] config for optimizer
-        learning_rate: 3e-05,
+        learning_rate: 3.75e-6,
         lr_scheduler: "linear_warmup_decay",
         warmup_steps: 0,
         warmup_proportion: 0.1,
@@ -56,7 +57,7 @@
         decr_ratio: 0.8,
         grad_clip: 1.0,
         # [end] optimizer
-        random_seed: null,
+        random_seed: 42,
         use_data_parallel: false,
     }
 }

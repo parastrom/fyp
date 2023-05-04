@@ -46,7 +46,6 @@ dependencies:
   - cudatoolkit=10.0.130=0
   - cudnn=7.6.5=cuda10.0_0
   - cycler=0.11.0=pyhd3eb1b0_0
-  - dataclasses=0.8=pyhc8e2a94_3
   - datasets=2.6.1=py310h06a4308_0
   - dbus=1.13.18=hb2f20db_0
   - decorator=5.1.1=pyhd3eb1b0_0
@@ -66,8 +65,7 @@ dependencies:
   - freetype=2.12.1=h4a9f257_0
   - fribidi=1.0.10=h7b6447c_0
   - frozenlist=1.3.3=py310h5eee18b_0
-  - fsspec=2023.3.0=py310h06a4308_0
-  - future=0.18.3=pyhd8ed1ab_0
+  - fsspec=2023.4.0=py310h06a4308_0
   - fuzzywuzzy=0.18.0=py310h06a4308_0
   - gast=0.5.3=pyhd3eb1b0_0
   - gdk-pixbuf=2.42.10=h5eee18b_0
@@ -90,8 +88,6 @@ dependencies:
   - huggingface_hub=0.10.1=py310h06a4308_0
   - icu=58.2=he6710b0_3
   - idna=3.4=py310h06a4308_0
-  - importlib-metadata=6.6.0=pyha770c72_0
-  - importlib_metadata=6.6.0=hd8ed1ab_0
   - intel-openmp=2021.4.0=h06a4308_3561
   - jinja2=3.1.2=py310h06a4308_0
   - joblib=1.1.1=py310h06a4308_0
@@ -191,7 +187,7 @@ dependencies:
   - pooch=1.4.0=pyhd3eb1b0_0
   - poppler=22.12.0=h381b16e_0
   - poppler-data=0.4.11=h06a4308_1
-  - protobuf=3.20.3=py310heca2aa9_1
+  - protobuf=3.20.3=py310h6a678d5_0
   - py-cpuinfo=5.0.0=py_0
   - pyarrow=11.0.0=py310h468efa6_0
   - pycparser=2.21=pyhd3eb1b0_0
@@ -218,9 +214,8 @@ dependencies:
   - re2=2022.04.01=h295c915_0
   - readline=8.2=h5eee18b_0
   - regex=2022.7.9=py310h5eee18b_0
-  - requests=2.28.1=py310h06a4308_1
+  - requests=2.29.0=py310h06a4308_0
   - responses=0.13.3=pyhd3eb1b0_0
-  - sacremoses=0.0.53=pyhd8ed1ab_0
   - scipy=1.10.1=py310hd5efca6_0
   - setuptools=66.0.0=py310h06a4308_0
   - sip=6.6.2=py310h6a678d5_0
@@ -236,7 +231,7 @@ dependencies:
   - torchtriton=2.0.0=py310
   - tornado=6.2=py310h5eee18b_0
   - tqdm=4.64.1=py310h06a4308_0
-  - transformers=4.28.1=pyhd8ed1ab_0
+  - transformers=4.24.0=py310h06a4308_0
   - typing-extensions=4.5.0=py310h06a4308_0
   - typing_extensions=4.5.0=py310h06a4308_0
   - tzdata=2023c=h04d1e81_0
@@ -244,18 +239,20 @@ dependencies:
   - utf8proc=2.6.1=h27cfd23_0
   - wheel=0.38.4=py310h06a4308_0
   - xxhash=0.8.0=h7f8727e_3
-  - xz=5.2.10=h5eee18b_1
+  - xz=5.4.2=h5eee18b_0
   - yaml=0.2.5=h7b6447c_0
   - yarl=1.8.1=py310h5eee18b_0
-  - zipp=3.15.0=pyhd8ed1ab_0
   - zlib=1.2.13=h5eee18b_0
   - zstd=1.5.5=hc292b87_0
   - pip:
       - cmake==3.25.0
       - lit==15.0.7
       - mpmath==1.2.1
+      - openai==0.27.5
+      - pydevd==2.9.6
       - pyqt5-sip==12.11.0
-      - torch==2.0.0+cu118
+      - sqloxide==0.1.33
+      - sqlparse==0.4.4
       - torchaudio==2.0.1+cu118
       - torchvision==0.15.1+cu118
 prefix: /home/tomisin/anaconda3/envs/fyp
